@@ -33,10 +33,38 @@ class GlobalContextManager(ContextManager):
         super().__init__(cls_registry)
         self.object_cache = {}
 
-    @abstractmethod
     def _get_cached_object(self, cls_name):
         return self.object_cache[cls_name] if cls_name in self.object_cache else None
 
-    @abstractmethod
     def _save_object_to_cache(self, cls_name, obj):
         self.object_cache[cls_name] = obj
+
+
+class NamedContextManager(ContextManager):
+
+    def __init__(self, cls_registry: ClassRegistry):
+        super().__init__(cls_registry)
+        self.contexts = {
+            "_default": []
+        }
+        self.current_context = "_default"
+
+    def create_context(self, context_name):
+        self.contexts[context_name] = {}
+
+    def remove_context(self, context_name):
+        if context_name in self.contexts and not context_name == '_default':
+            del self.contexts[context_name]
+            if self.current_context == context_name:
+                self.current_context = '_default'
+
+    def set_context(self, context_name):
+        if context_name not in self.contexts:
+            self.create_context(context_name)
+        self.current_context = context_name
+
+    def _get_cached_object(self, cls_name):
+        return self.contexts[self.current_context][cls_name] if cls_name in self.contexts[self.current_context] else None
+
+    def _save_object_to_cache(self, cls_name, obj):
+        self.contexts[self.current_context][cls_name] = obj

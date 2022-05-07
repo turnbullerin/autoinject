@@ -38,7 +38,7 @@ class InjectionManager:
     def inject(self, func):
         def wrapper(*args, **kwargs):
             new_args, new_kwargs = self.bind_parameters(func, args, kwargs)
-            return func(*args, **kwargs)
+            return func(*new_args, **new_kwargs)
         return wrapper
 
     def bind_parameters(self, func, args, kwargs):
@@ -54,6 +54,9 @@ class InjectionManager:
                 load_extra_args = True
             elif param.kind == inspect.Parameter.VAR_KEYWORD:
                 load_extra_kwargs = True
+            elif param.name == "self":
+                real_args.append(args[arg_index])
+                arg_index += 1
             else:
                 allow_kwarg = not param.kind == inspect.Parameter.POSITIONAL_ONLY
                 allow_arg = not param.kind == inspect.Parameter.KEYWORD_ONLY

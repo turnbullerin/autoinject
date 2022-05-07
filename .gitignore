@@ -1,0 +1,5 @@
+/venv/
+/dist/
+/src/autoinject.egg-info/
+/.git
+/.idea/

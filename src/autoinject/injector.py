@@ -72,6 +72,9 @@ class InjectionManager:
                         real_value = self.context_manager.get_object(param.annotation)
                 elif allow_arg and arg_index < len(args):
                     real_value = args[arg_index]
+                    arg_index += 1
+                elif param.default and not param.default == inspect.Parameter.empty:
+                    real_value = param.default
                 else:
                     raise MissingArgumentError(param.name)
                 if allow_arg:

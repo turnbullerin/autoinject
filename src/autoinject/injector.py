@@ -1,6 +1,6 @@
 import inspect
 
-from .context_manager import GlobalContextManager
+from .context_manager import NamedContextManager
 from .context_manager import ContextManager
 from .class_registry import ClassRegistry
 
@@ -21,7 +21,7 @@ class InjectionManager:
 
     def __init__(self):
         self.cls_registry = ClassRegistry()
-        self.context_manager = GlobalContextManager(self.cls_registry)
+        self.context_manager = NamedContextManager(self.cls_registry)
 
     def set_context_manager(self, context_manager: ContextManager):
         if not isinstance(context_manager, ContextManager):
@@ -39,6 +39,20 @@ class InjectionManager:
         def wrapper(*args, **kwargs):
             new_args, new_kwargs = self.bind_parameters(func, args, kwargs)
             return func(*new_args, **new_kwargs)
+        return wrapper
+
+    def construct(self, func):
+        def wrapper(*args, **kwargs):
+            obj = args[0]
+            if hasattr(obj.__class__, '__annotations__'):
+                for name, val in inspect.getmembers(obj.__class__):
+                    if name[0:2] == "__":
+                        continue
+                    if name in obj.__class__.__annotations__:
+                        cls = obj.__class__.__annotations__[name]
+                        if self.cls_registry.is_injectable(cls):
+                            setattr(obj, name, self.context_manager.get_object(cls))
+            return func(*args, **kwargs)
         return wrapper
 
     def bind_parameters(self, func, args, kwargs):

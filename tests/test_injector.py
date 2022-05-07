@@ -69,6 +69,27 @@ class TestInjection(unittest.TestCase):
         self.assertIsInstance(obj.x, TestClass)
         self.assertEqual(obj.arg_one, "foo")
 
+    def test_default_values(self):
+        injector = autoinject.InjectionManager()
+
+        @injector.injectable
+        class TestClass:
+            pass
+
+        self.assertTrue(injector.cls_registry.is_injectable(TestClass))
+
+        class TestInjectClass:
+            @injector.inject
+            def __init__(self, x: TestClass, y="one", z=2):
+                self.x = x
+                self.y = y
+                self.z = z
+
+        obj = TestInjectClass()
+        self.assertIsInstance(obj.x, TestClass)
+        self.assertEqual(obj.y, "one")
+        self.assertEqual(obj.z, 2)
+
     def test_keyword_arg(self):
         injector = autoinject.InjectionManager()
 

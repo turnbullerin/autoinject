@@ -40,22 +40,6 @@ class ContextManager(ABC):
             return cache_check_obj
 
 
-class GlobalContextManager(ContextManager):
-
-    def __init__(self, cls_registry: ClassRegistry):
-        super().__init__(cls_registry)
-        self.object_cache = {}
-
-    def _get_cached_object(self, cls_name, strategy):
-        return self.object_cache[cls_name] if cls_name in self.object_cache else None
-
-    def _save_object_to_cache(self, cls_name, obj, strategy):
-        self.object_cache[cls_name] = obj
-
-    def _supports_caching_strategy(self, strategy):
-        return strategy == CacheStrategy.GLOBAL_CACHE
-
-
 class NamedContextManager(ContextManager):
 
     def __init__(self, cls_registry: ClassRegistry):

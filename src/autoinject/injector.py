@@ -1,47 +1,75 @@
 import inspect
+from functools import wraps
 
-from .context_manager import NamedContextManager
 from .context_manager import ContextManager
 from .class_registry import ClassRegistry
 
 
 class MissingArgumentError(ValueError):
+    """ Raised when a required argument is missing """
     pass
 
 
 class ExtraPositionalArgumentsError(ValueError):
+    """ Raised when an extra positional argument is provided """
     pass
 
 
 class ExtraKeywordArgumentsError(ValueError):
+    """ Raised when an extra keyword argument is provided """
     pass
 
 
 class InjectionManager:
+    """ Responsible for managing the class registry, context manager, and providing dependency injection tools.
+
+        The main instance of this is provided as part of the ``autoinject`` library named ``injector``. Users should
+        make use of that instance instead of creating their own.
+
+        The primary way to register new classes for injection is using the
+        :meth:`autoinject.injector.InjectionManager.injectable` decorator. This registers the class with the class
+        registry and is suitable for classes that have a constructor with no arguments other than injectable ones. More
+        complex classes should use the :meth:`autoinject.injector.InjectionManager.register` decorator and
+        provide suitable arguments to support class construction.
+
+        Dependencies can be injected in two fashions: as part of the arguments to a function or method, or as
+        object attributes when ``__init__()`` is called. For the former, use the
+        :meth:`autoinject.injector.InjectionManager.inject` decorator; it will automatically provide an appropriate
+        instance of the objects based on the type-hint of the parameter. For the latter, use the
+        :meth:`autoinject.injector.InjectionManager.construct` decorator on the class's ``__init__()`` method. It will
+        search for CLASS attributes with an injectable type-hint and inject the objects into the INSTANCE attributes
+        as required.
+    """
 
     def __init__(self):
+        """ Constructor """
         self.cls_registry = ClassRegistry()
-        self.context_manager = NamedContextManager(self.cls_registry)
+        self.context_manager = ContextManager(self.cls_registry)
+        self.cls_registry.register_class(ClassRegistry, constructor=lambda: self.cls_registry)
+        self.cls_registry.register_class(ContextManager, constructor=lambda: self.context_manager)
 
-    def set_context_manager(self, context_manager: ContextManager):
-        if not isinstance(context_manager, ContextManager):
-            raise ValueError("An implementation of autoinject.ContextManager is required")
-        self.context_manager = context_manager
+    def register_informant(self, context_informant):
+        self.context_manager.register_informant(context_informant)
 
-    def register_class(self, cls, *args, constructor=None, **kwargs):
-        self.cls_registry.register_class(cls, *args, **kwargs, constructor=constructor)
+    def register(self, cls_name, *args, **kwargs):
+        def outer_wrap(constructor):
+            self.cls_registry.register_class(cls_name, *args, **kwargs, constructor=constructor)
+            return constructor
+        return outer_wrap
 
     def injectable(self, cls):
-        self.register_class(cls)
+        self.cls_registry.register_class(cls)
         return cls
 
     def inject(self, func):
+        @wraps(func)
         def wrapper(*args, **kwargs):
             new_args, new_kwargs = self.bind_parameters(func, args, kwargs)
             return func(*new_args, **new_kwargs)
         return wrapper
 
     def construct(self, func):
+        @wraps(func)
         def wrapper(*args, **kwargs):
             obj = args[0]
             if hasattr(obj.__class__, '__annotations__'):

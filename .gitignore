@@ -4,3 +4,6 @@
 /.git
 /.idea/
 scratch.py
+/docs/build
+/docs/make.bat
+/docs/Makefile

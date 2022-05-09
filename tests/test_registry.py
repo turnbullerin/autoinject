@@ -2,6 +2,10 @@ import unittest
 import autoinject
 
 
+class ForTestByName:
+    pass
+
+
 class TestRegistry(unittest.TestCase):
 
     def setUp(self):
@@ -22,6 +26,13 @@ class TestRegistry(unittest.TestCase):
         self.registry.register_class(self.test_class)
         self.assertTrue(self.registry.is_injectable(self.test_class))
         self.assertIsInstance(self.registry.get_instance(self.test_class), self.test_class)
+
+    def test_register_class_by_name(self):
+        self.assertFalse(self.registry.is_injectable("tests.test_registry.ForTestByName"))
+        self.assertRaises(autoinject.ClassNotFoundException, self.registry.get_instance, "tests.test_registry.ForTestByName")
+        self.registry.register_class(ForTestByName)
+        self.assertTrue(self.registry.is_injectable("tests.test_registry.ForTestByName"))
+        self.assertIsInstance(self.registry.get_instance("tests.test_registry.ForTestByName"), ForTestByName)
 
     def test_register_class_constructor_args(self):
         self.registry.register_class(self.test_class, 'two', def_arg2='alpha')

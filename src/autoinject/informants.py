@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from autoinject import injector
 
+
 class ContextInformant(ABC):
 
     context_manager: "autoinject.class_registry.ContextManager" = None

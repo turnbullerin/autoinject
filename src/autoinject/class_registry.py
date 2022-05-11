@@ -29,6 +29,7 @@ class ClassNotFoundException(ValueError):
     """ Raised when a class is requested that has not been registered.
 
         :param cls_name: Name of the class not found in the registry
+        :type cls_name: str
     """
 
     def __init__(self, cls_name: str):
@@ -43,7 +44,13 @@ class ClassRegistry:
         """ Constructor """
         self.object_constructors = {}
 
-    def cls_to_str(self, cls: type):
+    def cls_to_str(self, cls) -> str:
+        """ Converts a type to a string that represents the fully-qualified name of the class.
+        :param cls: Either a type to convert or a string representing the fully-qualified name of the class.
+        :type cls: type OR str
+        :return: Returns a string that could be used to import the class
+        :rtype: str
+        """
         info = str(cls)
         if info.startswith("<class '"):
             info = info[8:-2]
@@ -59,7 +66,13 @@ class ClassRegistry:
         """
         return self.cls_to_str(cls) in self.object_constructors
 
-    def register_class(self, cls, *args, constructor=None, caching_strategy=None, **kwargs):
+    def register_class(self,
+                       cls: type,
+                       *args,
+                       constructor: callable = None,
+                       caching_strategy: CacheStrategy = None,
+                       **kwargs):
+
         """ Registers a class for injection and specifies how to construct it
 
         The default method of construction is to call ``cls`` itself with ``args`` and ``kwargs``, i.e.:
@@ -91,12 +104,15 @@ class ClassRegistry:
             caching_strategy = CacheStrategy.CONTEXT_CACHE
         self.object_constructors[self.cls_to_str(cls)] = (constructor, args, kwargs, caching_strategy)
 
-    def get_cache_strategy(self, cls):
+    def get_cache_strategy(self, cls: type) -> CacheStrategy:
         """
             Retrieves the :class:`autoinject.class_registry.CacheStrategy` associated with the given ``cls``.
 
-        :param cls:
-        :return:
+        :param cls: The class to check the caching strategy of
+        :type cls: type
+        :raises autoinject.class_registry.ClassNotFoundException: Raised if the class has not been registered.
+        :return: The caching strategy for the given object
+        :rtype: autoinject.class_registry.CacheStrategy
         """
         cls_as_str = self.cls_to_str(cls)
         if cls_as_str not in self.object_constructors:

@@ -18,16 +18,22 @@ caches for different contexts.
 
     
 ## Inject Objects With Decorators
-    
+ 
+    # Decorate with @injector.inject for functions/methods:
+
     @injector.inject
     def inject_me(param1, param2, injected_param: MyInjectableClass):
         # injected_param is set to an instance of MyInjectableClass
         pass
 
-    inject_me("arg1", "arg2") # don't provide anything for injected_param
+    # Omit the injected parameters when calling it:
 
-    
-    class InjectMe
+    inject_me("arg1", "arg2")
+
+ 
+    # For classes, use @injector.construct to set instance attributes 
+    # based on the class attributes   
+    class InjectMe:
 
         injected_attribute: MyInjectableClass = None
 
@@ -35,5 +41,10 @@ caches for different contexts.
         def __init__(self):
             # self.injected_attribute is set to an instance of MyInjectableClass
             pass
+
+    # No need to do anything special here:
+
+    obj = InjectMe()
+    # obj.injected_attribute is set by the decorator before __init__() is called.
 
 Read the [full documentation](https://autoinject.readthedocs.io/en/latest/?) for more details.

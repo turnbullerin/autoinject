@@ -7,13 +7,27 @@ caches for different contexts.
 
 ## Define Injectable Classes
 
+    # Easy mode
 
     from autoinject import injector
 
     @injector.injectable
     class MyInjectableClass:
 
-        def __init__():
+        # __init__() should have no additional required arguments
+        def __init__(self):
+            pass
+
+    
+    # Hard mode, must specify the fully-qualified name of the class,
+    # but gain control over the arguments
+
+    @injector.register("example.MyInjectableClass", os.environ("MY_CONFIG_FILE"))
+    class MyInjectableClass:
+
+        def __init__(self, config_file):
+            # we receive os.environ("MY_CONFIG_FILE") as config_file here
+            # positional and keyword arguments to @injector.register() are supported
             pass
 
     

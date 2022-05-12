@@ -1,5 +1,5 @@
 Dependency Injection Framework
 ==============================
 
-.. automodule:: autoinject.injector
+.. automodule:: autoinject.injection
     :members:

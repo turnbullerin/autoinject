@@ -31,7 +31,8 @@ release = '0.1.0'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc'
+    'sphinx.ext.autodoc',
+    "sphinx.ext.linkcode"
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -41,6 +42,17 @@ templates_path = ['_templates']
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
+
+# -- Link Code ---------------------------------------------------------------
+
+
+def linkcode_resolve(domain, info):
+    if domain != 'py':
+        return None
+    if not info['module']:
+        return None
+    filename = info['module'].replace('.', '/')
+    return "https://github.com/turnbullerin/autoinject/tree/main/src/%s.py" % filename
 
 
 # -- Options for HTML output -------------------------------------------------

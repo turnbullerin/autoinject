@@ -4,9 +4,9 @@
 .. moduleauthor:: Erin Turnbull <erin.a.turnbull@gmail.com>
 
 """
-from .injector import InjectionManager, MissingArgumentError, ExtraKeywordArgumentsError, ExtraPositionalArgumentsError
+from .injection import InjectionManager, MissingArgumentError, ExtraKeywordArgumentsError, ExtraPositionalArgumentsError
 from .class_registry import ClassRegistry, ClassNotFoundException, CacheStrategy
-from .context_manager import ContextManager, CacheStrategyNotSupportedError
+from .context_manager import ContextManager
 
 __version__ = '0.1.0'
 

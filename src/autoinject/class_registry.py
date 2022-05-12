@@ -72,7 +72,6 @@ class ClassRegistry:
                        constructor: callable = None,
                        caching_strategy: CacheStrategy = None,
                        **kwargs):
-
         """ Registers a class for injection and specifies how to construct it
 
         The default method of construction is to call ``cls`` itself with ``args`` and ``kwargs``, i.e.:
@@ -104,12 +103,11 @@ class ClassRegistry:
             caching_strategy = CacheStrategy.CONTEXT_CACHE
         self.object_constructors[self.cls_to_str(cls)] = (constructor, args, kwargs, caching_strategy)
 
-    def get_cache_strategy(self, cls: type) -> CacheStrategy:
-        """
-            Retrieves the :class:`autoinject.class_registry.CacheStrategy` associated with the given ``cls``.
+    def get_cache_strategy(self, cls) -> CacheStrategy:
+        """ Retrieves the :class:`autoinject.class_registry.CacheStrategy` associated with the given ``cls``.
 
         :param cls: The class to check the caching strategy of
-        :type cls: type
+        :type cls: type OR str
         :raises autoinject.class_registry.ClassNotFoundException: Raised if the class has not been registered.
         :return: The caching strategy for the given object
         :rtype: autoinject.class_registry.CacheStrategy
@@ -120,8 +118,21 @@ class ClassRegistry:
         return self.object_constructors[cls_as_str][3]
 
     def get_instance(self, cls):
+        """ Retrieves an instance of ``cls``.
+
+        This method searches the registered classes for the spec on how to build an object of type ``cls`` and calls the
+        specified constructor method (usually the class itself).
+
+        Note that caching is not implemented here, caching is provided by
+        :class:`autoinject.context_manager.ContextManager` instead which wraps around this class.
+
+        :param cls: The class to get an instance of
+        :type cls: type OR str
+        :return: An instance of ``cls``
+        :rtype: cls
+        """
         cls_as_str = self.cls_to_str(cls)
         if cls_as_str not in self.object_constructors:
             raise ClassNotFoundException(cls_as_str)
-        call, args, kwargs, strat = self.object_constructors[cls_as_str]
+        call, args, kwargs, strategy = self.object_constructors[cls_as_str]
         return call(*args, **kwargs)

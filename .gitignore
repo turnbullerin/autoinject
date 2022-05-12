@@ -1,6 +1,6 @@
 /venv/
 /dist/
-/src/autoinject.egg-info/
+/src/*.egg-info/
 /.git
 /.idea/
 scratch.py

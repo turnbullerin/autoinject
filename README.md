@@ -59,7 +59,6 @@ class InjectMe:
         pass
 
 # No need to do anything special here:
-
 obj = InjectMe()
 # obj.injected_attribute is set by the decorator before __init__() is called.
 ```

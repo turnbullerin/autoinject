@@ -19,7 +19,7 @@ class ContextInformant(ABC):
     def __init__(self, name: str = None):
         """ Constructor """
         if name is None:
-            name = str(self.__class__)
+            name = str(self.__class__)  # pragma: no cover
         self.name = name
         self.context_manager = None
 
@@ -39,7 +39,7 @@ class ContextInformant(ABC):
         :return: A unique string per context
         :rtype: str
         """
-        pass
+        pass  # pragma: no cover
 
     def destroy(self, context_id: str):
         """ Remove all objects cached under the given context.

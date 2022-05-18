@@ -8,4 +8,4 @@ sphinx:
    configuration: docs/source/conf.py
 python:
   install:
-    - autoinject
+    - requirements/docs.txt

@@ -1,5 +1,7 @@
 # Autoinject
 
+[![Documentation Status](https://readthedocs.org/projects/autoinject/badge/?version=latest)](https://autoinject.readthedocs.io/en/latest/?badge=latest)
+
 A clean, simple framework for automatically injecting dependencies into objects and functions
 based around Python's type-hinting system. The framework provides caching of injectable objects,
 though this may be disabled on a class-by-class basis. It also supports managing independent

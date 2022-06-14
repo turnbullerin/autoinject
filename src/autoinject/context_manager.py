@@ -4,7 +4,13 @@
 
 """
 from .class_registry import ClassRegistry, CacheStrategy
-from .informants import ContextInformant
+from .informants import ContextInformant, ThreadedContextInformant
+import time
+
+
+# Time that must elapse since last call to cleanup() before get_object() will automatically
+# trigger the call.
+GARBAGE_COLLECTION_FREQUENCY = 5
 
 
 class ContextManager:
@@ -29,6 +35,8 @@ class ContextManager:
         self._context_cache = {}
         self._global_cache = {}
         self._informants = []
+        self.register_informant(ThreadedContextInformant())
+        self._last_gc = None
 
     def destroy_context(self, informant: ContextInformant, context_name: str):
         """ Removes the context and all objects from the context cache.
@@ -65,6 +73,12 @@ class ContextManager:
             h += "{}:{}::".format(informant.name, informant.get_context_id())
         return h
 
+    def cleanup(self):
+        """ Asks each informant to check for expired contexts """
+        for informant in self._informants:
+            informant.check_expired_contexts()
+        self._last_gc = time.monotonic()
+
     def get_object(self, cls):
         """ Retrieves an object of type cls from the cache or class registry.
 
@@ -75,6 +89,8 @@ class ContextManager:
         :returns: An object of type cls
         :rtype: object
         """
+        if self._last_gc is None or (time.monotonic() - self._last_gc) > GARBAGE_COLLECTION_FREQUENCY:
+            self.cleanup()
         cls_as_str = self._registry.cls_to_str(cls)
         strategy = self._registry.get_cache_strategy(cls)
         if strategy == CacheStrategy.NO_CACHE:

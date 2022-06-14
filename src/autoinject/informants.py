@@ -7,6 +7,7 @@
 
 """
 from abc import ABC, abstractmethod
+import threading
 
 
 class ContextInformant(ABC):
@@ -47,7 +48,11 @@ class ContextInformant(ABC):
         :param context_id: A value that would have been provided by get_context_id() to the ``ContextManager``
         :type context_id: str
         """
-        self.context_manager.destroy_context(self.name, context_id)
+        self.context_manager.destroy_context(self, context_id)
+
+    def check_expired_contexts(self):
+        """ Trigger to check for expired contexts so they can be cleaned-up from memory """
+        pass
 
 
 class NamedContextInformant(ContextInformant):
@@ -81,3 +86,32 @@ class NamedContextInformant(ContextInformant):
         return self.current_context
 
 
+class ThreadedContextInformant(ContextInformant):
+    """ Context informant for threading library """
+
+    def __init__(self):
+        """ Constructor """
+        super().__init__("threading")
+        self._active_threads = set()
+        self.lock = threading.Lock()
+
+    def check_expired_contexts(self):
+        """ Since threads don't reliably have a callback when they complete, we instead regularly monitor the active
+            thread list and remove them as they complete to cut down on memory usage.
+        """
+        with self.lock:
+            if self._active_threads:
+                active_idents = [t.ident for t in threading.enumerate()]
+                remove_list = set()
+                for ident in self._active_threads:
+                    if ident not in active_idents:
+                        remove_list.add(ident)
+                        self.destroy(str(ident))
+                for item in remove_list:
+                    self._active_threads.remove(item)
+
+    def get_context_id(self):
+        """ Provide the context ID to the ContextManager """
+        ident = threading.get_ident()
+        self._active_threads.add(ident)
+        return str(ident)

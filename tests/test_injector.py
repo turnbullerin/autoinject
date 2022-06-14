@@ -37,8 +37,35 @@ class TestInjection(unittest.TestCase):
         self.assertNotEqual(hash(obj), hash(obj2))
         self.assertEqual(hash(obj.x), hash(obj2.x))
 
+    def test_register_class(self):
+        class TestClassFoo:
+
+            def __init__(self, arg=1):
+                self.arg = arg
+
+        self.injector.register_constructor(TestClassFoo, TestClassFoo)
+        obj = self.injector.get(TestClassFoo)
+        self.assertIsInstance(obj, TestClassFoo)
+        self.assertEqual(obj.arg, 1)
+
+    def test_register_class_with_args(self):
+        class TestClassFoo:
+
+            def __init__(self, arg=1, kwarg=1):
+                self.arg = arg
+                self.kwarg = kwarg
+
+        self.injector.register_constructor(TestClassFoo, TestClassFoo, 2, kwarg=3)
+        obj = self.injector.get(TestClassFoo)
+        self.assertIsInstance(obj, TestClassFoo)
+        self.assertEqual(obj.arg, 2)
+        self.assertEqual(obj.kwarg, 3)
+
     def test_injectable(self):
         self.assertTrue(self.injector.cls_registry.is_injectable(self.test_class))
+
+    def test_get_object(self):
+        self.assertIsInstance(self.injector.get(self.test_class), self.test_class)
 
     def test_injection(self):
         tc = self.test_class

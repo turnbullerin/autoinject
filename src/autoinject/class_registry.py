@@ -66,12 +66,13 @@ class ClassRegistry:
         """
         return self.cls_to_str(cls) in self.object_constructors
 
-    def register_class(self,
-                       cls: type,
-                       *args,
-                       constructor: callable = None,
-                       caching_strategy: CacheStrategy = None,
-                       **kwargs):
+    def register(self,
+                 cls: type,
+                 *args,
+                 weight: int = 0,
+                 constructor: callable = None,
+                 caching_strategy: CacheStrategy = None,
+                 **kwargs):
         """ Registers a class for injection and specifies how to construct it
 
         The default method of construction is to call ``cls`` itself with ``args`` and ``kwargs``, i.e.:
@@ -101,7 +102,11 @@ class ClassRegistry:
             constructor = cls
         if caching_strategy is None:
             caching_strategy = CacheStrategy.CONTEXT_CACHE
-        self.object_constructors[self.cls_to_str(cls)] = (constructor, args, kwargs, caching_strategy)
+        cls_str = self.cls_to_str(cls)
+        # Ignore if a higher-weight constructor is already present
+        if cls_str in self.object_constructors and weight < self.object_constructors[cls_str][4]:
+            return
+        self.object_constructors[cls_str] = (constructor, args, kwargs, caching_strategy, weight)
 
     def get_cache_strategy(self, cls) -> CacheStrategy:
         """ Retrieves the :class:`autoinject.class_registry.CacheStrategy` associated with the given ``cls``.
@@ -134,5 +139,5 @@ class ClassRegistry:
         cls_as_str = self.cls_to_str(cls)
         if cls_as_str not in self.object_constructors:
             raise ClassNotFoundException(cls_as_str)
-        call, args, kwargs, strategy = self.object_constructors[cls_as_str]
+        call, args, kwargs, strategy, weight = self.object_constructors[cls_as_str]
         return call(*args, **kwargs)

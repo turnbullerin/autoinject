@@ -18,7 +18,7 @@ class TestContextManager(unittest.TestCase):
     def test_no_context_obj(self):
         class TestClass:
             pass
-        self.registry.register_class(TestClass, caching_strategy=autoinject.CacheStrategy.NO_CACHE)
+        self.registry.register(TestClass, caching_strategy=autoinject.CacheStrategy.NO_CACHE)
         obj1 = self.ctx.get_object(TestClass)
         obj2 = self.ctx.get_object(TestClass)
         self.assertFalse(hash(obj1) == hash(obj2))
@@ -26,7 +26,7 @@ class TestContextManager(unittest.TestCase):
     def test_global_obj(self):
         class TestClass:
             pass
-        self.registry.register_class(TestClass, caching_strategy=autoinject.CacheStrategy.GLOBAL_CACHE)
+        self.registry.register(TestClass, caching_strategy=autoinject.CacheStrategy.GLOBAL_CACHE)
         obj1 = self.ctx.get_object(TestClass)
         obj2 = self.ctx.get_object(TestClass)
         self.assertTrue(hash(obj1) == hash(obj2))
@@ -34,7 +34,7 @@ class TestContextManager(unittest.TestCase):
     def test_context_obj(self):
         class TestClass:
             pass
-        self.registry.register_class(TestClass, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
+        self.registry.register(TestClass, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
         nci = autoinject.NamedContextInformant()
         self.ctx.register_informant(nci)
         nci.switch_context("alpha")
@@ -58,7 +58,7 @@ class TestContextManager(unittest.TestCase):
         self.assertTrue(hash(def_obj6) == hash(def_obj3))
 
     def test_context_obj_by_str(self):
-        self.registry.register_class(ForNameTest, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
+        self.registry.register(ForNameTest, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
         nci = autoinject.NamedContextInformant()
         self.ctx.register_informant(nci)
         nci.switch_context("alpha")

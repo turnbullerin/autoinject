@@ -51,19 +51,19 @@ class InjectionManager:
         self.cls_registry = ClassRegistry()
         self.context_manager = ContextManager(self.cls_registry)
         # Register the class registry for injection, using the local instance
-        self.cls_registry.register_class(
+        self.cls_registry.register(
             ClassRegistry,
             constructor=lambda: self.cls_registry,
             caching_strategy=CacheStrategy.GLOBAL_CACHE
         )
         # Same but for context manager
-        self.cls_registry.register_class(
+        self.cls_registry.register(
             ContextManager,
             constructor=lambda: self.context_manager,
             caching_strategy=CacheStrategy.GLOBAL_CACHE
         )
         # Same but for self
-        self.cls_registry.register_class(
+        self.cls_registry.register(
             InjectionManager,
             constructor=lambda: self,
             caching_strategy=CacheStrategy.GLOBAL_CACHE
@@ -72,6 +72,14 @@ class InjectionManager:
     def register_informant(self, context_informant):
         """ Wrapper around :meth:`autoinject.context_manager.ContextManager.register_informant` """
         self.context_manager.register_informant(context_informant)
+
+    def register_constructor(self, cls_name, constructor, *args, **kwargs):
+        """ Wrapper around :meth:`autoinject.class_registry.ClassRegistry.register_class` """
+        self.cls_registry.register(cls_name, *args, constructor=constructor, **kwargs)
+
+    def get(self, cls_name):
+        """ Wrapper around :meth:`autoinject.context_manager.ContextManager.get_object` """
+        return self.context_manager.get_object(cls_name)
 
     def register(self, cls_name, *args, **kwargs):
         r""" Decorator for advanced registration of injectable objects. Includes support for passing positional and
@@ -97,7 +105,7 @@ class InjectionManager:
             :param kwargs: Keyword arguments for the constructor
         """
         def outer_wrap(constructor):
-            self.cls_registry.register_class(cls_name, *args, **kwargs, constructor=constructor)
+            self.cls_registry.register(cls_name, *args, **kwargs, constructor=constructor)
             return constructor
         return outer_wrap
 
@@ -116,7 +124,7 @@ class InjectionManager:
                     pass
 
         """
-        self.cls_registry.register_class(cls)
+        self.cls_registry.register(cls)
         return cls
 
     def inject(self, func):

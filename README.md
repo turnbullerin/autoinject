@@ -66,3 +66,19 @@ obj = InjectMe()
 ```
 
 Read the [full documentation](https://autoinject.readthedocs.io/en/latest/?) for more details.
+
+## Changelog
+
+### v0.2.0
+- Objects with a cache strategy of `CONTEXT_CACHE` will now have separate instances within threads
+- Added `injector.get()` as a fast way to get the object that would be injected (useful if operating outside of
+  a function or method)
+- Added `injector.register_constructor()` as a wrapper to register a class in a non-decorated fashion
+- Added the entry point `autoinject.injectables` to directly register injectable classes
+- Added the entry point `autoinject.registrars`
+- Support for overriding injectables and for injecting functions 
+- Added a `weight` keyword argument to `register()` and `register_construct()` to control overriding order
+- There is now a `cleanup()` function in the `ContextManager()` class which triggers informant objects to check for
+  old items that are no longer needed. This was added mostly to support the thread-based context informant, since it 
+  has no easy way of calling `destroy()` whenever the thread ends (unless one manually calls it). It is the best 
+  practice if you can call `destroy()` directly whenever a context ceases to exist instead of relying on `cleanup()`.

@@ -66,10 +66,104 @@ function that will build an instance of the class::
     def build_example_class(arg1):
         return ExampleClass(arg1, kwarg1=4)
 
-While the key purpose is to inject class instances based on type-hints, it is possible to inject other things. This is
-not currently supported officially. However, autoinject basically matches a type-hint to a call to
-``injector.register()`` and calls the decorated function if needed to build a new object. If it returned a function
-instead of an object, this would probably work fine with any arbitrary strings as type-hints.
+    # As of 0.2.0, you can instead use register_constructor() to provide defaults to the constructor
+    injector.register_constructor(ExampleClass, constructor=ExampleClass, "arg", kwarg1=4)
+
+
+As of 0.2.0, function-based injections are now possible using a decorator-like constructor for the function::
+
+    from autoinject import injector
+
+    @injector.register("my.package.function")
+    def _create_function():
+        def do_stuff(arg1, arg2):
+            pass
+        return do_stuff
+
+The value in doing this lies in the other change in 0.2.0, that one can override the constructor function by registering
+another constructor to the same object name. This lets other libraries extend and enhance the functionality of an
+injectable object without having to change how the object is injected in other dependencies. By supporting functions,
+a function can also be overridden as needed. A weight parameter for ``register()`` and ``register_constructor()`` is now
+available, with higher weight constructors overriding lower weight ones::
+
+    from autoinject import injector
+
+    # Note also that arbitrary strings are now supported as the identifier, but keeping to package-style notation is
+    # probably the clearest way to proceed
+    @injector.register("my.package.formatter")
+    def _create_function1():
+        def do_stuff(arg):
+            return arg
+        return do_stuff
+
+
+    @injector.register("my.package.formatter", weight=20)
+    def _create_function2():
+        def do_stuff(arg):
+            return "!{}!".format(arg.upper())
+        return do_stuff
+
+
+    @injector.register("my.package.formatter", weight=10)
+    def _create_function3():
+        def do_stuff(arg1):
+            return arg.upper()
+        return do_stuff
+
+
+    class Stuff:
+
+        formatter: "my.package.formatter" = None
+
+        @injector.construct
+        def __init__(self):
+            print(self.formatter("bar"))
+
+    Stuff()
+    # This should print "!BAR!", as the weight of the second constructor is higher than the first or third
+
+
+Leveraging Entry Points
+-----------------------
+
+Most applications should be fine registering their injectables in the source code. When the class is imported for the
+first time (so that it can be used as a type-hint), the class is registered as an injectable. However, if you do not
+want to follow this pattern, autoinject exposes two entry points that your package can use::
+
+    # setup.cfg
+    [options.entry_points]
+
+    # Specify the path to your class to the autoinject.injectables entry point (equivalent to @injector.injectable)
+    autoinject.injectables =
+        my_class = mylib.MyClass
+
+    # Specify a custom function to handle registration
+    autoinject.registrars =
+        my_reg = mylib._register_my_class2
+
+
+    # mylib.__init__.py
+
+    # This one will get registered automatically
+    from foo import MyClass
+
+    # This one is done by the registration function below
+    from bar import MyClass2
+
+    def _register_my_class2(injector):
+        # Perhaps we need some keyword arguments for this class's constructor
+        injector.register_constructor(MyClass2, MyClass2, arg="bar")
+
+A common use case I have found for this is if you are creating an integration with an existing package; you can't add
+the appropriate decorators directly and users would have to remember to import your integration package to get the
+injection to work. By registering your integration with the entry point, it will automatically be included when the
+autoinject singleton is constructed. Another exception would be if you wanted to facilitate people using string type-
+hinting instead of the type itself or you wanted to provide an override class to inject.
+
+Note that the registrar functions take the injector as an argument, to ensure they are operating on the singleton. This
+is necessary because the registrar functions are called during ``__init__()`` and so the global ``autoinject.injector``
+object is not yet available.
+
 
 Contexts
 --------

@@ -2,3 +2,4 @@ sphinx
 twine
 build
 coverage
+eptest

@@ -10,6 +10,14 @@ from .context_manager import ContextManager
 from .class_registry import ClassRegistry, CacheStrategy
 
 
+# Backwards support for Python 3.7
+import importlib.util
+if importlib.util.find_spec("importlib.metadata"):
+    from importlib.metadata import entry_points
+else:
+    from importlib_metadata import entry_points
+
+
 class MissingArgumentError(ValueError):
     """ Raised when a required argument is missing """
     pass
@@ -46,7 +54,7 @@ class InjectionManager:
         as required.
     """
 
-    def __init__(self):
+    def __init__(self, include_entry_points=True):
         """ Constructor """
         self.cls_registry = ClassRegistry()
         self.context_manager = ContextManager(self.cls_registry)
@@ -68,6 +76,17 @@ class InjectionManager:
             constructor=lambda: self,
             caching_strategy=CacheStrategy.GLOBAL_CACHE
         )
+        if include_entry_points:
+            # Handle the autoinject.registrars entry point
+            auto_register = entry_points(group="autoinject.registrars")
+            for ep in auto_register:
+                registrar_func = ep.load()
+                registrar_func(self)
+            # Handle the autoinject.injectables entry point
+            auto_inject = entry_points(group="autoinject.injectables")
+            for inject in auto_inject:
+                cls = inject.load()
+                self.register_constructor(cls, constructor=cls)
 
     def register_informant(self, context_informant):
         """ Wrapper around :meth:`autoinject.context_manager.ContextManager.register_informant` """

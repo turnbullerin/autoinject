@@ -1,5 +1,6 @@
 import unittest
 import inspect
+import eptest
 
 import autoinject
 
@@ -8,7 +9,7 @@ class TestInjection(unittest.TestCase):
 
     def setUp(self):
         super().setUp()
-        self.injector = autoinject.InjectionManager()
+        self.injector = autoinject.InjectionManager(False)
 
         @self.injector.injectable
         class TestClass:

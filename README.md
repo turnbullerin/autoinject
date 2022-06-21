@@ -69,6 +69,9 @@ Read the [full documentation](https://autoinject.readthedocs.io/en/latest/?) for
 
 ## Changelog
 
+### v0.2.1
+- Fixed a bug in Python 3.8 and 3.9 where `entry_points(group=?)` was not supported
+
 ### v0.2.0
 - Objects with a cache strategy of `CONTEXT_CACHE` will now have separate instances within threads
 - Added `injector.get()` as a fast way to get the object that would be injected (useful if operating outside of

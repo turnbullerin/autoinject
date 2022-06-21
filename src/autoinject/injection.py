@@ -11,11 +11,13 @@ from .context_manager import ContextManager
 from .class_registry import ClassRegistry, CacheStrategy
 
 
-# Backwards support for Python 3.7
+# Metadata entrypoint support depends on Python version
 import importlib.util
 if importlib.util.find_spec("importlib.metadata"):
+    # Python 3.10 supports entry_points(group=?)
     if sys.version_info.minor >= 10:
         from importlib.metadata import entry_points
+    # Python 3.8 and 3.9 have metadata, but don't support the keyword argument
     else:
         from importlib.metadata import entry_points as _entry_points
 
@@ -28,6 +30,7 @@ if importlib.util.find_spec("importlib.metadata"):
             else:
                 return []
 
+# Backwards support for Python 3.7
 else:
     from importlib_metadata import entry_points
 

@@ -4,6 +4,7 @@
 
 """
 import inspect
+import sys
 from functools import wraps
 
 from .context_manager import ContextManager
@@ -13,7 +14,20 @@ from .class_registry import ClassRegistry, CacheStrategy
 # Backwards support for Python 3.7
 import importlib.util
 if importlib.util.find_spec("importlib.metadata"):
-    from importlib.metadata import entry_points
+    if sys.version_info.minor >= 10:
+        from importlib.metadata import entry_points
+    else:
+        from importlib.metadata import entry_points as _entry_points
+
+        def entry_points(group=None):
+            eps = _entry_points()
+            if group is None:
+                return eps
+            elif group in eps:
+                return eps[group]
+            else:
+                return []
+
 else:
     from importlib_metadata import entry_points
 

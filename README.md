@@ -69,6 +69,9 @@ Read the [full documentation](https://autoinject.readthedocs.io/en/latest/?) for
 
 ## Changelog
 
+### v0.2.2
+- Fixed a bug for injection when a non-truthy default value needed to be used.
+
 ### v0.2.1
 - Fixed a bug in Python 3.8 and 3.9 where `entry_points(group=?)` was not supported
 

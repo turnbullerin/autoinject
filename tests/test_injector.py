@@ -120,6 +120,23 @@ class TestInjection(unittest.TestCase):
         self.assertEqual(obj.y, "one")
         self.assertEqual(obj.z, 2)
 
+    def test_blank_default_value(self):
+        tc = self.test_class
+
+        class TestInjectClass:
+            @self.injector.inject
+            def __init__(self, x: tc, y=None, z="", a=0):
+                self.x = x
+                self.y = y
+                self.z = z
+                self.a = a
+
+        obj = TestInjectClass()
+        self.assertIsInstance(obj.x, self.test_class)
+        self.assertIsNone(obj.y)
+        self.assertEqual(obj.z, "")
+        self.assertEqual(obj.a, 0)
+
     def test_keyword_arg(self):
         tc = self.test_class
 

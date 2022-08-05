@@ -288,7 +288,7 @@ class InjectionManager:
                     arg_index += 1
 
                 # Handle arguments with defaults
-                elif param.default and not param.default == inspect.Parameter.empty:
+                elif not param.default == inspect.Parameter.empty:
                     real_value = param.default
 
                 # An argument is missing if we get to this point

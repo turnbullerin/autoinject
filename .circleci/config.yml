@@ -6,8 +6,7 @@ jobs:
     executor: python/default
     steps:
       - checkout
-      - python/dist
-      - run: pip install twine && twine upload dist/*
+      - run: python -m build && pip install twine && twine upload dist/*
   test:
     executor: python/default
     steps:

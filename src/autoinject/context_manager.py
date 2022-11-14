@@ -79,6 +79,14 @@ class ContextManager:
             informant.check_expired_contexts()
         self._last_gc = time.monotonic()
 
+    def clear_cache(self, cls):
+        cls_as_str = self._registry.cls_to_str(cls)
+        if cls_as_str in self._global_cache:
+            del self._global_cache[cls_as_str]
+        for ctx in self._context_cache:
+            if cls_as_str in self._context_cache[ctx]:
+                del self._context_cache[ctx][cls_as_str]
+
     def get_object(self, cls):
         """ Retrieves an object of type cls from the cache or class registry.
 

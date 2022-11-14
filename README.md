@@ -69,6 +69,16 @@ Read the [full documentation](https://autoinject.readthedocs.io/en/latest/?) for
 
 ## Changelog
 
+### v1.0.0
+- Official initial release
+- Added support for @injector.injectable_global which registers with GLOBAL cache instead of context-specific cache
+- Added support for @injector.injectable_nocache which registers with NO_CACHE instead 
+- Added support for injector.override() as a helper function to replace one constructor with another.
+- Added support for any constructor argument (e.g. via override() or register_constructor()) to be specified
+  by fully-qualified Python name (e.g. package.module.MyInjectableClass) to better support systems where injected
+  classes are specified by name.
+- Fixed a bug whereby the cache wasn't cleared
+
 ### v0.2.2
 - Fixed a bug for injection when a non-truthy default value needed to be used.
 

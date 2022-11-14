@@ -10,7 +10,6 @@ from functools import wraps
 from .context_manager import ContextManager
 from .class_registry import ClassRegistry, CacheStrategy
 
-
 # Metadata entrypoint support depends on Python version
 import importlib.util
 if importlib.util.find_spec("importlib.metadata"):
@@ -111,11 +110,18 @@ class InjectionManager:
 
     def register_constructor(self, cls_name, constructor, *args, **kwargs):
         """ Wrapper around :meth:`autoinject.class_registry.ClassRegistry.register_class` """
+        clear_cache = self.cls_registry.is_injectable(cls_name)
         self.cls_registry.register(cls_name, *args, constructor=constructor, **kwargs)
+        if clear_cache:
+            self.context_manager.clear_cache(cls_name)
 
     def get(self, cls_name):
         """ Wrapper around :meth:`autoinject.context_manager.ContextManager.get_object` """
         return self.context_manager.get_object(cls_name)
+
+    def override(self, cls_name, new_constructor, *args, **kwargs):
+        """ Override one class with another. """
+        self.register_constructor(cls_name, new_constructor, *args, **kwargs)
 
     def register(self, cls_name, *args, **kwargs):
         r""" Decorator for advanced registration of injectable objects. Includes support for passing positional and
@@ -141,7 +147,7 @@ class InjectionManager:
             :param kwargs: Keyword arguments for the constructor
         """
         def outer_wrap(constructor):
-            self.cls_registry.register(cls_name, *args, **kwargs, constructor=constructor)
+            self.register_constructor(cls_name, constructor, *args, **kwargs)
             return constructor
         return outer_wrap
 
@@ -160,7 +166,25 @@ class InjectionManager:
                     pass
 
         """
-        self.cls_registry.register(cls)
+        self.register_constructor(cls, None)
+        return cls
+
+    def injectable_global(self, cls):
+        """injectable_global()
+
+        Class decorator for basic registration of injectable objects that don't require external input, but with
+        a global scope.
+        """
+        self.register_constructor(cls, None, caching_strategy=CacheStrategy.GLOBAL_CACHE)
+        return cls
+
+    def injectable_nocache(self, cls):
+        """injectable_nocache()
+
+        Class decorator for basic registration of injectable objects that don't require external input, but with
+        no caching.
+        """
+        self.register_constructor(cls, None, caching_strategy=CacheStrategy.NO_CACHE)
         return cls
 
     def inject(self, func):

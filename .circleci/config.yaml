@@ -1,0 +1,29 @@
+version: 2.1
+orbs:
+  python: circleci/python@2.1.1
+jobs:
+  publish:
+    executor: python/default
+    steps:
+      - checkout
+      - python/dist
+      - run: pip install twine && twine upload dist/*
+  test:
+    executor: python/default
+    steps:
+      - checkout
+      - python/install-packages:
+          pkg-manager: pip
+          pip-dependency-file: requirements/dev.txt
+      - run: python -m unittest
+
+workflows:
+  main_workflow:
+    jobs:
+      - test
+      - publish:
+          requires:
+            - test
+          filters:
+            branches:
+              only: main

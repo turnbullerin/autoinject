@@ -198,14 +198,14 @@ WSGI environment). If this is not the desired behaviour, the caching strategy ca
     from autoinject import injector, CacheStrategy
 
     # This class will never be cached
-    @injector.register("my.package.ExampleClass", caching_strategy=CacheStrategy.NO_CACHE)
+    @injector.injectable_nocache
     class ExampleNoCacheClass:
 
         def __init__(self):
             pass
 
     # This class will ignore the context and cache itself globally. Make sure it is thread-safe!
-    @injector.register("my.package.ExampleClass", caching_strategy=CacheStrategy.GLOBAL_CACHE)
+    @injector.injectable_global
     class ExampleGlobalClass:
 
         def __init__(self):

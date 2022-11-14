@@ -5,6 +5,10 @@ import eptest
 import autoinject
 
 
+class NonLocalInjectionOne:
+    pass
+
+
 class TestInjection(unittest.TestCase):
 
     def setUp(self):
@@ -64,6 +68,63 @@ class TestInjection(unittest.TestCase):
 
     def test_injectable(self):
         self.assertTrue(self.injector.cls_registry.is_injectable(self.test_class))
+        self.assertEqual(self.injector.cls_registry.get_cache_strategy(self.test_class), autoinject.CacheStrategy.CONTEXT_CACHE)
+
+    def test_injectable_global(self):
+
+        @self.injector.injectable_global
+        class TestClassBar:
+            pass
+
+        self.assertTrue(self.injector.cls_registry.is_injectable(TestClassBar))
+        self.assertEqual(self.injector.cls_registry.get_cache_strategy(TestClassBar), autoinject.CacheStrategy.GLOBAL_CACHE)
+
+    def test_injectable_nocache(self):
+
+        @self.injector.injectable_nocache
+        class TestClassBar:
+            pass
+
+        self.assertTrue(self.injector.cls_registry.is_injectable(TestClassBar))
+        self.assertEqual(self.injector.cls_registry.get_cache_strategy(TestClassBar), autoinject.CacheStrategy.NO_CACHE)
+
+    def test_override(self):
+
+        class TestClassOverride:
+            pass
+
+        self.injector.override(self.test_class, TestClassOverride)
+        self.assertIsInstance(self.injector.get(self.test_class), TestClassOverride)
+
+    def test_override_by_name(self):
+
+        class TestClassOverride:
+            pass
+
+        qn = "tests.test_injector.TestInjection.setUp.<locals>.TestClass"
+        self.assertIsInstance(self.injector.get(qn), self.test_class)
+        self.injector.override(qn, TestClassOverride)
+        self.assertIsInstance(self.injector.get(qn), TestClassOverride)
+        self.assertIsInstance(self.injector.get(self.test_class), TestClassOverride)
+
+    def test_named_constructor(self):
+        qn = "tests.test_injector.NonLocalInjectionOne"
+        self.injector.register_constructor(qn, qn)
+        self.assertIsInstance(self.injector.get(qn), NonLocalInjectionOne)
+        self.assertIsInstance(self.injector.get(NonLocalInjectionOne), NonLocalInjectionOne)
+
+    def test_override_preserves_scope(self):
+
+        @self.injector.injectable_global
+        class BaseTestClass:
+            pass
+
+        class TestClassOverride:
+            pass
+
+        self.injector.override(BaseTestClass, TestClassOverride)
+        self.assertEqual(self.injector.cls_registry.get_cache_strategy(BaseTestClass), autoinject.CacheStrategy.GLOBAL_CACHE)
+        self.assertIsInstance(self.injector.get(BaseTestClass), TestClassOverride)
 
     def test_get_object(self):
         self.assertIsInstance(self.injector.get(self.test_class), self.test_class)

@@ -5,6 +5,7 @@
 
 """
 import enum
+import importlib
 
 
 class CacheStrategy(enum.Enum):
@@ -100,13 +101,25 @@ class ClassRegistry:
             if not isinstance(cls, type):
                 raise ValueError("A valid constructor must be passed")
             constructor = cls
-        if caching_strategy is None:
-            caching_strategy = CacheStrategy.CONTEXT_CACHE
+        elif isinstance(constructor, str):
+            constructor = self._resolve_constructor(constructor)
         cls_str = self.cls_to_str(cls)
+        if caching_strategy is None:
+            caching_strategy = CacheStrategy.CONTEXT_CACHE if cls_str not in self.object_constructors else self.object_constructors[cls_str][3]
         # Ignore if a higher-weight constructor is already present
         if cls_str in self.object_constructors and weight < self.object_constructors[cls_str][4]:
             return
         self.object_constructors[cls_str] = (constructor, args, kwargs, caching_strategy, weight)
+
+    def _resolve_constructor(self, cls: str):
+        """Resolves a constructor specified as a string (e.g. a fully-qualified class name or function) to an actual
+            object.
+        """
+        package_dot_pos = cls.rfind(".")
+        package = cls[0:package_dot_pos]
+        specific_cls_name = cls[package_dot_pos + 1:]
+        mod = importlib.import_module(package)
+        return getattr(mod, specific_cls_name)
 
     def get_cache_strategy(self, cls) -> CacheStrategy:
         """ Retrieves the :class:`autoinject.class_registry.CacheStrategy` associated with the given ``cls``.

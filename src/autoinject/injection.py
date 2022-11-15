@@ -227,17 +227,27 @@ class InjectionManager:
         """
         @wraps(func)
         def wrapper(*args, **kwargs):
-            obj = args[0]
-            if hasattr(obj.__class__, '__annotations__'):
-                for name, val in inspect.getmembers(obj.__class__):
-                    if name[0:2] == "__":
-                        continue
-                    if name in obj.__class__.__annotations__:
-                        cls = obj.__class__.__annotations__[name]
-                        if self.cls_registry.is_injectable(cls):
-                            setattr(obj, name, self.context_manager.get_object(cls))
+            obj = args[0]  # self
+            type_map = self._get_bindable_attributes(obj.__class__)
+            for name, val in inspect.getmembers(obj.__class__):
+                if name[0:2] == "__":
+                    continue
+                if name in type_map and getattr(obj, name) is None:
+                    if self.cls_registry.is_injectable(type_map[name]):
+                        setattr(obj, name, self.context_manager.get_object(type_map[name]))
             return func(*args, **kwargs)
         return wrapper
+
+    def _get_bindable_attributes(self, cls: type) -> dict:
+        """Given a type, find all the bindable attributes using the annotations."""
+        type_map = {}
+        check_me = [cls, *cls.__mro__]
+        for check_cls in check_me:
+            if hasattr(check_cls, "__annotations__"):
+                for k in check_cls.__annotations__:
+                    if k not in type_map:
+                        type_map[k] = check_cls.__annotations__[k]
+        return type_map
 
     def _bind_parameters(self, func: callable, args: tuple, kwargs: dict):
         """ Inspects the given callable object and builds a new set of arguments for it with dependencies injected

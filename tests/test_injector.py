@@ -53,6 +53,34 @@ class TestInjection(unittest.TestCase):
         self.assertIsInstance(obj, TestClassFoo)
         self.assertEqual(obj.arg, 1)
 
+    def test_inherited_injection(self):
+
+        @self.injector.injectable
+        class InjectableOne:
+            pass
+
+        class ParentInjectable:
+
+            one: InjectableOne = None
+
+            @self.injector.construct
+            def __init__(self):
+                pass
+
+        class SubInjectable(ParentInjectable):
+
+            two: InjectableOne = None
+
+            @self.injector.construct
+            def __init__(self):
+                super().__init__()
+
+        t = SubInjectable()
+        self.assertIsInstance(t.two, InjectableOne)
+        self.assertIsInstance(t.one, InjectableOne)
+
+
+
     def test_register_class_with_args(self):
         class TestClassFoo:
 

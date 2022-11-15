@@ -71,6 +71,9 @@ Read the [full documentation](https://autoinject.readthedocs.io/en/latest/?) for
 
 ## Changelog
 
+### v1.0.1
+- Inherited injectable class members are now supported properly
+
 ### v1.0.0
 - Official initial release
 - Added support for @injector.injectable_global which registers with GLOBAL cache instead of context-specific cache

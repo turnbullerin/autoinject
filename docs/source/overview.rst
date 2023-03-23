@@ -122,6 +122,22 @@ available, with higher weight constructors overriding lower weight ones::
     Stuff()
     # This should print "!BAR!", as the weight of the second constructor is higher than the first or third
 
+From 1.1.0, objects may define a ``__cleanup__()`` method which is called when they are removed from the global or
+context cache. It is also called via the ``atexit`` module at the end of program execution. A future version will add
+this behaviour to non-cached objects when they leave the scope from which they were invoked. The intended purpose is to
+ensure resources are cleaned up properly from injected classes (e.g. database connections).
+
+    from autoinject import injector
+
+    @injector.injectable
+    class InjectableClass:
+
+        def __init__():
+            self._is_active = True
+
+        def __cleanup__():
+            self._is_active = False
+
 
 Leveraging Entry Points
 -----------------------

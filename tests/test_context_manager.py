@@ -23,6 +23,54 @@ class TestContextManager(unittest.TestCase):
         obj2 = self.ctx.get_object(TestClass)
         self.assertFalse(hash(obj1) == hash(obj2))
 
+    def test_teardown_call(self):
+        class TestClass:
+
+            def __init__(self):
+                self.closed = False
+
+            def __cleanup__(self):
+                self.closed = True
+        self.registry.register(TestClass, caching_strategy=autoinject.CacheStrategy.GLOBAL_CACHE)
+        # Ensure we can still get an object
+        obj1 = self.ctx.get_object(TestClass)
+        self.assertFalse(obj1.closed)
+        # Trigger teardown and ensure our __cleanup__ handler got called.
+        self.ctx.teardown()
+        self.assertTrue(obj1.closed)
+        # New objects should be different
+        obj2 = self.ctx.get_object(TestClass)
+        self.assertFalse(hash(obj1) == hash(obj2))
+
+    def test_teardown_context(self):
+        class TestClass:
+
+            def __init__(self):
+                self.closed = False
+
+            def __cleanup__(self):
+                self.closed = True
+        self.registry.register(TestClass, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
+        nci = autoinject.NamedContextInformant()
+        self.ctx.register_informant(nci)
+        nci.switch_context("alpha")
+        alpha_obj = self.ctx.get_object(TestClass)
+        self.assertFalse(alpha_obj.closed)
+        nci.switch_context("beta")
+        beta_obj = self.ctx.get_object(TestClass)
+        self.assertFalse(beta_obj.closed)
+        nci.destroy("alpha")
+        self.assertTrue(alpha_obj.closed)
+        self.assertFalse(beta_obj.closed)
+        beta_obj2 = self.ctx.get_object(TestClass)
+        self.assertTrue(hash(beta_obj) == hash(beta_obj2))
+        nci.switch_context("alpha")
+        alpha_obj2 = self.ctx.get_object(TestClass)
+        alpha_obj3 = self.ctx.get_object(TestClass)
+        self.assertFalse(hash(alpha_obj2) == hash(alpha_obj))
+        self.assertFalse(hash(alpha_obj2) == hash(beta_obj))
+        self.assertTrue(hash(alpha_obj2) == hash(alpha_obj3))
+
     def test_global_obj(self):
         class TestClass:
             pass

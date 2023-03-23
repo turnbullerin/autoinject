@@ -8,7 +8,7 @@ from .injection import InjectionManager, MissingArgumentError, ExtraKeywordArgum
 from .class_registry import ClassRegistry, ClassNotFoundException, CacheStrategy
 from .context_manager import ContextManager
 
-__version__ = '1.0.1'
+__version__ = '1.1.0'
 
 injector = InjectionManager()
 

@@ -6,6 +6,7 @@
 from .class_registry import ClassRegistry, CacheStrategy
 from .informants import ContextInformant, ThreadedContextInformant
 import time
+import atexit
 
 
 # Time that must elapse since last call to cleanup() before get_object() will automatically
@@ -37,6 +38,20 @@ class ContextManager:
         self._informants = []
         self.register_informant(ThreadedContextInformant())
         self._last_gc = None
+        atexit.register(self.teardown)
+
+    def teardown(self):
+        """Remove all object references to ensure they get garbage collected."""
+        # Global cache clean-up
+        self._cleanup_object_list(self._global_cache)
+        del self._global_cache
+        self._global_cache = {}
+        # Context-based cache clean-up
+        ckeys = list(self._context_cache.keys())
+        for cache_key in ckeys:
+            self._cleanup_object_list(self._context_cache[cache_key])
+            del self._context_cache[cache_key]
+        self._context_cache = {}
 
     def destroy_context(self, informant: ContextInformant, context_name: str):
         """ Removes the context and all objects from the context cache.
@@ -48,10 +63,21 @@ class ContextManager:
         :param context_name: The name of the context to destroy
         :type context_name: str
         """
-        remove_key = "::{}:{}::".format(informant.name, context_name)
+        remove_key = "::{}:{}::".format(informant.name.replace(":", "_"), context_name.replace(":", "_"))
         remove_keys = [key for key in self._context_cache if remove_key in key]
         for key in remove_keys:
+            self._cleanup_object_list(self._context_cache[key])
             del self._context_cache[key]
+
+    def _cleanup_object_list(self, obj_list):
+        """Cleanup all objects in a list of objects."""
+        for on in obj_list:
+            self._cleanup_object(obj_list[on])
+
+    def _cleanup_object(self, obj):
+        """Cleanup an object on leaving scope."""
+        if hasattr(obj, "__cleanup__"):
+            obj.__cleanup__()
 
     def register_informant(self, informant: ContextInformant):
         """ Registers a context informant
@@ -70,7 +96,7 @@ class ContextManager:
         """
         h = "base::"
         for informant in self._informants:
-            h += "{}:{}::".format(informant.name, informant.get_context_id())
+            h += "{}:{}::".format(informant.name.replace(":", "_"), informant.get_context_id().replace(":", "_"))
         return h
 
     def cleanup(self):

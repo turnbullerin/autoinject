@@ -71,6 +71,11 @@ Read the [full documentation](https://autoinject.readthedocs.io/en/latest/?) for
 
 ## Changelog
 
+### v1.1.0
+- Injectable objects may now define a `__cleanup__()` method which will be invoked when the global cache or context
+  cache is cleared.
+- Note that `__cleanup__()` IS NOT INVOKED for one-time use objects at the moment, but this is planned as a feature.
+
 ### v1.0.1
 - Inherited injectable class members are now supported properly
 

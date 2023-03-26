@@ -71,6 +71,33 @@ Read the [full documentation](https://autoinject.readthedocs.io/en/latest/?) for
 
 ## Changelog
 
+### v1.2.0
+- Contextvar-driven contexts are now respected by default
+- Several wrappers exist to better support using contextvars. All of them provide for a separate set of injected 
+  CONTEXT_CACHE dependencies. In addition, each is a wrapper around `@injector.inject`, so both are not needed.
+  - `@injector.with_contextvars`: Creates a new context that is a copy of the current one 
+  - `@injector.with_same_contextvars`: Uses the current context
+  - `@injector.with_empty_contextvars`: Creates a new empty context
+- When using a `with_contextvars` wrapper, you can inject the context object using type-hinting (e.g. 
+  `ctx: contextvars.Context`). Note that this is actually an instance of `ContextVarsManager` which is a context manager
+  that delegates most functionality to the current `contextvars.Context` object with a few modifications:
+  - It provides the method `set(context_var, value) -> token` and the complementary `reset(context_var, token)` to
+    handle variable setting and resetting within the context manager.
+    - If the "same" context is used, these methods are equivalent to calling the methods directly on the `context_var`
+    - In all other cases, they are equivalent to calling `ctx.run(context_var.METHOD, *args, **kwargs)`. 
+    - In essence, this makes sure the `set()` and `reset()` operations are performed in the context that the manager is
+      managing (since the manager doesn't run the inner block in the context).
+  - If the "same" context is used:
+    - `run()` will just directly call the function (it is in the current context essentially)
+    - `copy()` is an alias for `contextvars.copy_context()`
+    - Other functions besides `set()` and `reset()` make a copy of the current context and return the results of its
+      method. This copy is transient and remade each time, so modules making extensive use of it can call `copy()` and
+      check the copy.
+- Note that, unlike the context manager, the decorators also RUN the inner code in the given context.  
+- Thread-handling was improved significantly and now also includes a wrapper function for your `run()` methods to
+  ensure clean-up (`@injector.as_thread_run()`). This also is a wrapper around `@injector.inject` so you can inject
+  variables into your `run()` method directly.
+
 ### v1.1.0
 - Injectable objects may now define a `__cleanup__()` method which will be invoked when the global cache or context
   cache is cleared.

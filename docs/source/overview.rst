@@ -190,7 +190,7 @@ order to allow applications to customize how context management happens, the ``C
 informants to be added to it. Each of these should provide the ``ContextManager`` with a unique value and the
 manager then ensures that objects are never shared where the informant has provided a different value.
 
-A single class, :class:`autoinject.informants.NamedContextInformant` is provided to demonstrate how this works::
+:class:`autoinject.informants.NamedContextInformant` is provided to demonstrate how this works::
 
     from autoinject import injector, NamedContextInformant
 
@@ -226,6 +226,230 @@ WSGI environment). If this is not the desired behaviour, the caching strategy ca
 
         def __init__(self):
             pass
+
+Currently, two context providers are provided natively for integration with common Python techniques for handling
+context-specific global variables: ``threading`` and ``contextvars``. Threads are handled automatically and are
+cleaned up "soon" after the thread terminates. For extra safety, threads should clean up their own context variables
+when they are done.::
+
+    from autoinject import injector
+
+    # If you can't change the thread, this is the best practice
+    thread = MyThread()
+    thread.start()
+    thread.join()
+    # Call this immediately after the thread ends before a new thread might get started.
+    injector.thread_cleanup(thread)
+
+
+    # If you are in control of the thread design, use the decorator for the run() method
+    class MyThread(threading.Thread)
+
+        @injector.as_thread_run
+        # This wraps @injector.inject so you don't need both.
+        def run(self):
+            # dostuff
+            pass
+            # When complete, the decorator ensures thread_cleanup() is called.
+
+    class MyThread2(threading.Thread)
+        # Alternatively, you can combine this with the normal @injector.inject method. This lets you use
+        # type hinting for where to put the context argument.
+        @injector.inject(as_thread_run=True)
+        def run(_ctx: contextvars.Context):
+            pass
+    thread = MyThread()
+    thread.start()
+    thread.join()
+    # Nothing else needed
+
+Contextvars requires some special support because there is no method to hook into the creation or destruction of
+contexts and, by default, copying a ``contextvars.Context`` copies the values as well. Therefore, contexts would
+essentially share the context of their parents if their parents used an autoinjected variable, otherwise they do not.
+Autoinject provides some helper methods for those wishing to use autoinjection with contextvars.::
+
+    from autoinject import injector
+    from contextvars import Context, copy_context
+
+    @injector.inject
+    def do_stuff(injectable: Type = None):
+        return injectable
+
+    context_fresh = Context()
+    context_copy = context_fresh.copy()
+    context_main_copy = copy_context()
+
+    # Note that all four of these objects will be different, since
+    # the contexts were created before an injectable was called on them
+    object1 = do_stuff()
+    object2 = context_fresh.run(do_stuff)
+    object3 = context_copy.run(do_stuff)
+    object4 = context_main_copy.run(do_stuff)
+
+    # Now that we have run an autoinjector command, the contexts will maintain their state
+    still_object2 = context_fresh.run(do_stuff)
+
+    # If we copy a context that has had a command run on it, that context will have the same state
+    context_fresh_new_copy = context_fresh.copy()
+    still_object2_again = context_fresh_new_copy.run(do_stuff)
+
+    # To give the context a new set of autoinjected commands, we can ask the injector to "freshen" it:
+    context_refreshed = context_fresh.copy()
+    injector.cv_freshen(context_refreshed)
+    no_longer_object2 = context_refreshed.run(do_stuff)
+
+    # To ensure that context is properly passed when copied, we can ask the injector to "touch" it BEFORE copying:
+    new_context = Context()
+    injector.cv_touch(new_context)
+    new_context_copy = new_context.copy()
+    object5 = new_context.run(do_stuff)
+    still_object5 = new_context_copy.run(do_stuff)
+
+    # We can also freshen or touch the current context by omitting the argument
+    # Note that "touch" does not change the ID if it already exists and "freshen" always changes it.
+    def example():
+        injector.cv_touch()
+        subcontext1 = copy_context()
+        subcontext2 = copy_context()
+        actually_still_object5 = subcontext1.run(do_stuff)
+        yep_still_object5 = subcontext2.run(do_stuff)
+    new_context.run(example)
+
+    # Freshening the context ID also returns the old ID (if it existed), which can be restored with cv_restore:
+    def example():
+        token = injector.cv_freshen()
+        subcontext1 = copy_context()
+        subcontext2 = copy_context()
+        object6_now = subcontext1.run(do_stuff)
+        still_object6 = subcontext2.run(do_stuff)
+    new_context.run(example)
+    but_still_object5_here = new_context.run(do_stuff)
+
+    # This last example gives a good example of how to handle working with a class that
+    # implements contextvars but not autoinject:
+    def user_method():
+        token = injector.cv_freshen()
+        # do stuff with the injector
+        injector.cv_cleanup()
+        injector.cv_restore(token)
+
+    # The API will then call user_method() in whatever context it wants,
+    # but we have ensured that our autoinject-enabled functionality is
+    # operating within a unique context for each time user_method() is
+    # called.
+
+    # Note the use of cv_cleanup() in the last example. This is used to remove all the
+    # current object caches (much like thread_cleanup()). It is especially important for
+    # contextvars because there is currently no way to ensure that the cleanup happens
+    # otherwise (except when the process ends). As with thread_cleanup(), calling it
+    # with no arguments calls it on the current context.
+    injector.cv_cleanup(new_context)
+
+    # Note that the actual ID underlying the context is preserved. If, after a cleanup, the
+    # injector was used again, a new object is made but it would be the same across previously
+    # linked contexts.
+    object7_now = new_context.run(do_stuff)
+    also_object7 = new_context_copy.run(do_stuff)
+
+    # For simplicity, autoinject also provides a context manager named ContextVars which can help you
+    achieve these goals:
+
+    # The default is to COPY the existing context exactly and freshen the context ID
+    with injector.ContextVars() as ctx:
+        # This automatically creates a new sub-context with a copy of all values, and
+        # freshens the context ID inside the block. It is the equivalent of
+        # injector.cv_touch()
+        # ctx = contextvars.copy_context()
+        # original_token = injector.cv_freshen(ctx)
+        # Note that injector.ContextVars(ContextVarManager.COPY) has the same behaviour.
+
+        # ctx exposes the contextvars.Context() API
+        object1 = ctx.run(do_stuff)
+
+        # It also can make copies with an option to preserve or freshen the context ID
+        # The first call to copy_context() sets the context ID like it was injected, so
+        # the behaviour is consistent.
+        same_injector_ctx = ctx.copy(True) # doesn't matter if you did stuff first or not
+        still_object1 = same_injector_ctx.run(do_stuff)
+        new_injector_ctx = ctx.copy() # always Fresh
+        object2 = new_injector_ctx.run(do_stuff)
+
+        # Note that you can pass a context to use instead of the current one to the context manager
+        with injector.ContextVars(same_injector_ctx) as ctx2:
+            # ctx2's ID is DIFFERENT here because the context manager freshens it
+            # other contextvars as the same as in same_injector_ctx
+            now_object3 = ctx2.run(do_stuff)
+        but_still_object1_here = ctx.run(do_stuff)
+
+        # We can also wrap ContextVarManager objects in the same way
+        with injector.ContextVars(ctx) as ctx3:
+            # same context as outside, but different injector ID
+            # maybe not very useful
+
+
+        # When the block ends, the cache related to the context ID is removed automatically
+        # and the previous context ID is restored. This is the equivalent of
+        # injector.destroy_self(new_context)
+        # injector.cv_restore(original_token)
+
+    # This special value creates a new EMPTY context:
+    with injector.ContextVars(ContextVarManager.EMPTY) as ctx:
+        # Equivalent to:
+        # ctx = contextvars.Context()
+        # original_token = injector.cv_freshen(ctx)
+        object4 = ctx.run(do_stuff)
+        # cleanup the same
+
+    # This special value re-uses the current context. It does this by essentially
+    # just directly calling methods instead of using a Context class method.
+    with injector.ContextVars(ContextVarManager.SAME) as ctx:
+        # Equivalent to
+        # original_token = injector.cv_freshen()
+        object5 = ctx.run(do_stuff) # actually a direct call to do_stuff()
+        new_ctx = ctx.copy_context() # actually a call to contextvars.copy_context()
+        # cleanup the same
+
+    # The context manager provided here maps 1-to-1 for a context object but also provides a set and reset method
+
+    with injector.ContextVars(ContextVarManager.SAME) as ctx:
+        token = ctx.set(my_var, "foobar")
+        ctx.reset(my_var, token)
+
+    # In addition, you can decorate a function or method to have a context manager while running:
+
+    # This injector creates a COPY by default of the current context, but
+    # the other modes work as well (SAME or EMPTY). Note that the method is
+    # run IN THE NEW CONTEXT, so access to the old context is unavailable. This is the ideal way
+    # to use this.
+    @injector.with_contextvars([context_mode=None])
+    # This wraps @injector.inject so you don't need both.
+    def my_method(_ctx: contextvars.Context):
+        # Use _ctx as above
+        pass
+
+
+    # Like above but uses context_mode="same" for using the same context but
+    # a fresh autoinjection ID
+    # This wraps @injector.inject so you don't need both.
+    @injector.with_same_contextvars
+    def my_method(_ctx: contextvars.Context):
+        # Use _ctx as above
+        pass
+
+
+    # Like above but uses context_mode="empty" for a brand new context
+    # This wraps @injector.inject so you don't need both.
+    @injector.with_empty_contextvars
+    def my_method(_ctx: contextvars.Context):
+        # Use _ctx as above
+        pass
+
+    # Alternatively, you can combine this with the normal @injector.inject method. This lets you use
+    # type hinting for where to put the context argument.
+    @injector.inject(with_contextvars=True, [context_mode=None]])
+    def my_method(_ctx: contextvars.Context):
+        pass
+
 
 Fixing IDE Problems
 -------------------

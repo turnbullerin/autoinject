@@ -7,9 +7,8 @@
 from .injection import InjectionManager, MissingArgumentError, ExtraKeywordArgumentsError, ExtraPositionalArgumentsError
 from .class_registry import ClassRegistry, ClassNotFoundException, CacheStrategy
 from .context_manager import ContextManager
+from .informants import ContextInformant, NamedContextInformant, ContextVarInformant, ThreadedContextInformant
 
-__version__ = '1.1.0'
+__version__ = '1.2.0'
 
 injector = InjectionManager()
-
-from .informants import ContextInformant, NamedContextInformant

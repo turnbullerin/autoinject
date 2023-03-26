@@ -1,7 +1,11 @@
 import unittest
 import inspect
 import eptest
+import contextvars
 
+
+cv: contextvars.ContextVar[str] = contextvars.ContextVar[str]("_test_hello", default=None)
+cv2 = contextvars.ContextVar[str]("_test2", default=None)
 import autoinject
 
 
@@ -79,7 +83,33 @@ class TestInjection(unittest.TestCase):
         self.assertIsInstance(t.two, InjectableOne)
         self.assertIsInstance(t.one, InjectableOne)
 
-
+    def test_contextvar_param(self):
+        @self.injector.with_contextvars
+        def test_method(set_to: str, ctx: contextvars.Context = None):
+            self.assertIsNotNone(ctx)
+            original = cv.get()
+            self.assertEqual(ctx.get(cv), cv.get())
+            token = cv.set(set_to)
+            self.assertEqual(ctx.get(cv), cv.get())
+            self.assertEqual(cv.get(), set_to)
+            ctx.reset(cv, token)
+            self.assertEqual(ctx.get(cv), cv.get())
+            self.assertEqual(cv.get(), original)
+            token = ctx.set(cv, set_to)
+            self.assertEqual(ctx.get(cv), cv.get())
+            self.assertEqual(cv.get(), set_to)
+            cv.reset(token)
+            self.assertEqual(ctx.get(cv), cv.get())
+            self.assertEqual(cv.get(), original)
+            cv.set(set_to)
+            return ctx.get(cv)
+        self.assertIsNone(cv.get())
+        cv.set("first")
+        self.assertEqual(cv.get(), "first")
+        c = contextvars.Context()
+        result = test_method("second")
+        self.assertEqual(result, "second")
+        self.assertEqual(cv.get(), "first")
 
     def test_register_class_with_args(self):
         class TestClassFoo:

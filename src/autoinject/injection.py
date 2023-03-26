@@ -5,10 +5,14 @@
 """
 import inspect
 import sys
+import threading
 from functools import wraps
+import contextvars
+import typing as t
 
 from .context_manager import ContextManager
 from .class_registry import ClassRegistry, CacheStrategy
+from .informants import ContextVarManager
 
 # Metadata entrypoint support depends on Python version
 import importlib.util
@@ -104,6 +108,64 @@ class InjectionManager:
                 cls = inject.load()
                 self.register_constructor(cls, constructor=cls)
 
+    def ContextVars(self, context: t.Union[contextvars.Context, ContextVarManager, str, None] = "_default"):
+        """Use as a context manager for managing an area where all context_cache injectables are the same."""
+        return ContextVarManager(self.context_manager.contextvar_info, context)
+
+    def cv_freshen(self, context: contextvars.Context = None):
+        """Freshen the context var to get a new context and return the old one"""
+        return ContextVarManager.freshen_context(context)
+
+    def cv_restore(self, token, context: contextvars.Context = None):
+        """Restore the context var to what it was"""
+        ContextVarManager.restore_context_id(token, context)
+
+    def cv_cleanup(self, context: contextvars.Context = None):
+        """Clean up the cache for the current contextvars context or the given one"""
+        self.context_manager.contextvar_info.destroy_self(context)
+
+    def cv_touch(self, context: contextvars.Context = None):
+        """Touch the contextvar for autoinjector to ensure it exists."""
+        ContextVarManager.ensure_context_id(context)
+
+    def thread_cleanup(self, thread: threading.Thread = None):
+        """Clean-up after a thread (or the current one)"""
+        self.context_manager.thread_info.destroy_self(thread)
+
+    def with_contextvars(self, context_mode: t.Union[str, callable, None] = "_default"):
+        """Decorate a function to give it a new contextvars context (see .ContextVars) and cleanup after."""
+        if callable(context_mode):
+            return self._injector_wrap(context_mode, with_contextvars=True, context_mode="_default")
+        else:
+            return self.inject(with_contextvars=True, context_mode=context_mode)
+
+    def with_empty_contextvars(self, fn):
+        """Create a new empty context to run this in"""
+        return self._injector_wrap(fn, with_contextvars=True, context_mode="empty")
+
+    def with_same_contextvars(self, fn):
+        """Use the same context to run this in"""
+        return self._injector_wrap(fn, with_contextvars=True, context_mode="same")
+
+    def async_with_contextvars(self, context_mode: t.Union[str, callable, None] = "_default"):
+        """Decorate a function to give it a new contextvars context (see .ContextVars) and cleanup after."""
+        if callable(context_mode):
+            return self._async_injector_wrap(context_mode, with_contextvars=True, context_mode="_default")
+        else:
+            return self.async_inject(with_contextvars=True, context_mode=context_mode)
+
+    def async_with_empty_contextvars(self, fn):
+        """Create a new empty context to run this in"""
+        return self._async_injector_wrap(fn, with_contextvars=True, context_mode="empty")
+
+    def async_with_same_contextvars(self, fn):
+        """Use the same context to run this in"""
+        return self._async_injector_wrap(fn, with_contextvars=True, context_mode="same")
+
+    def as_thread_run(self, fn):
+        """Decorate a threading.Thread.run() method to ensure its context variables are cleaned up."""
+        return self._injector_wrap(fn, as_thread_run=True)
+
     def register_informant(self, context_informant):
         """ Wrapper around :meth:`autoinject.context_manager.ContextManager.register_informant` """
         self.context_manager.register_informant(context_informant)
@@ -187,10 +249,8 @@ class InjectionManager:
         self.register_constructor(cls, None, caching_strategy=CacheStrategy.NO_CACHE)
         return cls
 
-    def inject(self, func):
-        """inject()
-
-        Function or method decorator responsible for injecting dependencies into the argument list. A dependency is
+    def inject(self, func=None, *, with_contextvars: bool = False, context_mode="_default", as_thread_run: bool = False):
+        """Function or method decorator responsible for injecting dependencies into the argument list. A dependency is
         defined as a parameter with a type-hint that has been registered. To make sure your IDE code-completion works
         properly, it is recommended to place these at the end of the argument list and to give them a default value of
         None.
@@ -202,10 +262,59 @@ class InjectionManager:
                 pass
 
         """
+        if func is None:
+            def inner_decorator(func):
+                return self._injector_wrap(func, with_contextvars, context_mode, as_thread_run)
+            return inner_decorator
+        else:
+            return self._injector_wrap(func, with_contextvars, context_mode, as_thread_run)
+
+    def async_inject(self, func=None, *, with_contextvars: bool = False, context_mode="_default"):
+        """Function or method decorator responsible for injecting dependencies into the argument list. A dependency is
+        defined as a parameter with a type-hint that has been registered. To make sure your IDE code-completion works
+        properly, it is recommended to place these at the end of the argument list and to give them a default value of
+        None.
+
+        ::
+
+            @injector.inject
+            def my_function(some_param, injected_param: MyClass = None):
+                pass
+
+        """
+        if func is None:
+            def inner_decorator(func):
+                return self._async_injector_wrap(func, with_contextvars, context_mode)
+            return inner_decorator
+        else:
+            return self._async_injector_wrap(func, with_contextvars, context_mode)
+
+    def _async_injector_wrap(self, func, with_contextvars: bool = False, context_mode="_default"):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            if with_contextvars:
+                with ContextVarManager(self.context_manager.contextvar_info, context_mode, delegate_run=False) as ctx:
+                    new_args, new_kwargs = self._bind_parameters(func, args, kwargs, ctx)
+                    return await ctx.run(func, *new_args, **new_kwargs)
+            else:
+                new_args, new_kwargs = self._bind_parameters(func, args, kwargs)
+                return await func(*new_args, **new_kwargs)
+        return wrapper
+
+    def _injector_wrap(self, func, with_contextvars: bool = False, context_mode="_default", as_thread_run: bool = False):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            new_args, new_kwargs = self._bind_parameters(func, args, kwargs)
-            return func(*new_args, **new_kwargs)
+            try:
+                if with_contextvars:
+                    with ContextVarManager(self.context_manager.contextvar_info, context_mode) as ctx:
+                        new_args, new_kwargs = self._bind_parameters(func, args, kwargs, ctx)
+                        return ctx.run(func, *new_args, **new_kwargs)
+                else:
+                    new_args, new_kwargs = self._bind_parameters(func, args, kwargs)
+                    return func(*new_args, **new_kwargs)
+            finally:
+                if as_thread_run:
+                    self.thread_cleanup()
         return wrapper
 
     def construct(self, func):
@@ -249,12 +358,13 @@ class InjectionManager:
                         type_map[k] = check_cls.__annotations__[k]
         return type_map
 
-    def _bind_parameters(self, func: callable, args: tuple, kwargs: dict):
+    def _bind_parameters(self, func: callable, args: tuple, kwargs: dict, ctx=None):
         """ Inspects the given callable object and builds a new set of arguments for it with dependencies injected
 
             :param func: The callable to inspect
             :param args: Original positional arguments
             :param kwargs: Original keyword arguments
+            :param ctx: The context to inject
 
             :returns: A tuple of a list and a dict corresponding to updated positional and keyword arguments
             :rtype: tuple(list, dict)
@@ -262,6 +372,12 @@ class InjectionManager:
 
         # Inspect the object
         func_sig = inspect.signature(func)
+
+        # Allowed context injection types
+        context_allowed = [] if ctx is None else [
+            self.cls_registry.cls_to_str(contextvars.Context),
+            self.cls_registry.cls_to_str(ContextVarManager)
+        ]
 
         # Store the actual arguments to use here
         real_args = []
@@ -295,7 +411,6 @@ class InjectionManager:
 
             # All other cases may need dependencies injected
             else:
-
                 # Check if we can accept a keyword argument
                 allow_kwarg = not param.kind == inspect.Parameter.POSITIONAL_ONLY
 
@@ -309,6 +424,11 @@ class InjectionManager:
                 if allow_kwarg and param.name in kwargs:
                     real_value = kwargs[param.name]
                     del kwargs[param.name]
+
+                # If we are expecting a context variable and the context was provided
+                # we can auto inject over contextvars.Context or the local ContextVarsManager class
+                elif ctx is not None and param.annotation and self.cls_registry.cls_to_str(param.annotation) in context_allowed:
+                    real_value = ctx
 
                 # If the type-hint is injectable, we'll inject it
                 # Note that we don't let injectables be overridden by positional argments as this would create too

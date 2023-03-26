@@ -4,7 +4,7 @@
 
 """
 from .class_registry import ClassRegistry, CacheStrategy
-from .informants import ContextInformant, ThreadedContextInformant
+from .informants import ContextInformant, ThreadedContextInformant, ContextVarInformant
 import time
 import atexit
 
@@ -36,7 +36,10 @@ class ContextManager:
         self._context_cache = {}
         self._global_cache = {}
         self._informants = []
-        self.register_informant(ThreadedContextInformant())
+        self.contextvar_info = ContextVarInformant()
+        self.thread_info = ThreadedContextInformant()
+        self.register_informant(self.thread_info)
+        self.register_informant(self.contextvar_info)
         self._last_gc = None
         atexit.register(self.teardown)
 

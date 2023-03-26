@@ -155,3 +155,22 @@ class TestThreadedContext(unittest.TestCase):
         self.assertEqual(len(injector.context_manager._context_cache), 2)
         injector.context_manager.cleanup()
         self.assertEqual(len(injector.context_manager._context_cache), 0)
+
+    def test_threaded_context_destroy(self):
+        injector = autoinject.InjectionManager(False)
+        injector.register_constructor(NotThreadSafe, NotThreadSafe, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
+        tr = ThreadedReader(injector)
+        tr.start()
+        tw = ThreadedWriter(injector)
+        tw.start()
+        time.sleep(2)
+        tw.stop = True
+        tr.stop = True
+        tr.join()
+        tw.join()
+        self.assertTrue(tw.exc_count == 0)
+        self.assertEqual(len(injector.context_manager._context_cache), 2)
+        injector.context_manager.thread_info.destroy_self(tr)
+        self.assertEqual(len(injector.context_manager._context_cache), 1)
+        injector.context_manager.thread_info.destroy_self(tw)
+        self.assertEqual(len(injector.context_manager._context_cache), 0)

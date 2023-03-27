@@ -57,6 +57,17 @@ class TestInjection(unittest.TestCase):
         self.assertIsInstance(obj, TestClassFoo)
         self.assertEqual(obj.arg, 1)
 
+    def test_exception_in_block(self):
+        @self.injector.with_contextvars
+        def make_error():
+            def do_error():
+                raise ValueError()
+
+            c = contextvars.Context()
+            c2 = contextvars.Context()
+            c.run(c2.run, do_error)
+        self.assertRaises(ValueError, make_error)
+
     def test_inherited_injection(self):
 
         @self.injector.injectable

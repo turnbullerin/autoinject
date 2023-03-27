@@ -108,9 +108,9 @@ class InjectionManager:
                 cls = inject.load()
                 self.register_constructor(cls, constructor=cls)
 
-    def ContextVars(self, context: t.Union[contextvars.Context, ContextVarManager, str, None] = "_default"):
+    def ContextVars(self, context: t.Union[contextvars.Context, ContextVarManager, str, None] = "_default", suppress_exit_warning: bool = False):
         """Use as a context manager for managing an area where all context_cache injectables are the same."""
-        return ContextVarManager(self.context_manager.contextvar_info, context)
+        return ContextVarManager(self.context_manager.contextvar_info, context, suppress_exit_warning=suppress_exit_warning)
 
     def cv_freshen(self, context: contextvars.Context = None):
         """Freshen the context var to get a new context and return the old one"""
@@ -132,10 +132,10 @@ class InjectionManager:
         """Clean-up after a thread (or the current one)"""
         self.context_manager.thread_info.destroy_self(thread)
 
-    def with_contextvars(self, context_mode: t.Union[str, callable, None] = "_default"):
+    def with_contextvars(self, context_mode: t.Union[str, callable, None] = "_default", suppress_exit_warning: bool = False):
         """Decorate a function to give it a new contextvars context (see .ContextVars) and cleanup after."""
         if callable(context_mode):
-            return self._injector_wrap(context_mode, with_contextvars=True, context_mode="_default")
+            return self._injector_wrap(context_mode, with_contextvars=True, context_mode="_default", suppress_exit_warning=suppress_exit_warning)
         else:
             return self.inject(with_contextvars=True, context_mode=context_mode)
 
@@ -301,12 +301,12 @@ class InjectionManager:
                 return await func(*new_args, **new_kwargs)
         return wrapper
 
-    def _injector_wrap(self, func, with_contextvars: bool = False, context_mode="_default", as_thread_run: bool = False):
+    def _injector_wrap(self, func, with_contextvars: bool = False, context_mode="_default", as_thread_run: bool = False, suppress_exit_warning: bool = False):
         @wraps(func)
         def wrapper(*args, **kwargs):
             try:
                 if with_contextvars:
-                    with ContextVarManager(self.context_manager.contextvar_info, context_mode) as ctx:
+                    with ContextVarManager(self.context_manager.contextvar_info, context_mode, suppress_exit_warning=suppress_exit_warning) as ctx:
                         new_args, new_kwargs = self._bind_parameters(func, args, kwargs, ctx)
                         return ctx.run(func, *new_args, **new_kwargs)
                 else:

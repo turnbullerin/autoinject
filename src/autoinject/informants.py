@@ -10,6 +10,7 @@ import contextvars
 from abc import ABC, abstractmethod
 import threading
 import secrets
+import logging
 
 
 class ContextInformant(ABC):
@@ -103,9 +104,10 @@ class ContextVarManager:
     SAME = "same"
     DEFAULT = "_default"
 
-    def __init__(self, contextvar_informant, context="_default"):
+    def __init__(self, contextvar_informant, context="_default", suppress_exit_warning: bool = False):
         self._context = context
         self._delegate_run = True
+        self._suppress_exit_warning = suppress_exit_warning
         if self._context == ContextVarManager.EMPTY:
             self._context = contextvars.Context()
         elif self._context in (ContextVarManager.COPY, ContextVarManager.DEFAULT) or self._context is None:
@@ -134,7 +136,11 @@ class ContextVarManager:
     def __exit__(self, exc_type, exc_val, exc_tb):
         global _autoinject_var
         self._informant.destroy_self(self._context)
-        ContextVarManager.restore_context_id(self._reset_token, self)
+        try:
+            ContextVarManager.restore_context_id(self._reset_token, self)
+        except ValueError as ex:
+            if not self._suppress_exit_warning:
+                logging.getLogger("autoinject").warning(f"Failure to clear context ID (likely inner block left context in an unclear state)")
         self._reset_token = None
 
     def __contains__(self, item):

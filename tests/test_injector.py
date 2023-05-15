@@ -237,6 +237,56 @@ class TestInjection(unittest.TestCase):
         self.assertEqual(hash(obj3), hash(obj))
         self.assertEqual(obj3.arg, 1)
 
+    def test_test_case_wrapper_fixture_separate_decorator(self):
+        class TestClassFoo:
+
+            def __init__(self, arg=1):
+                self.arg = arg
+
+        self.injector.injectable_global(TestClassFoo)
+        obj = self.injector.get(TestClassFoo)
+        self.assertIsInstance(obj, TestClassFoo)
+        self.assertEqual(obj.arg, 1)
+
+        @self.injector.test_case()
+        @self.injector.with_fixture(TestClassFoo, TestClassFoo(5))
+        def example_test_case():
+            obj2 = self.injector.get(TestClassFoo)
+            self.assertIsInstance(obj2, TestClassFoo)
+            self.assertNotEqual(hash(obj), hash(obj2))
+            self.assertEqual(obj2.arg, 5)
+
+        example_test_case()
+
+        obj3 = self.injector.get(TestClassFoo)
+        self.assertEqual(hash(obj3), hash(obj))
+        self.assertEqual(obj3.arg, 1)
+
+    def test_test_case_wrapper_fixture_separate_decorator_cb(self):
+        class TestClassFoo:
+
+            def __init__(self, arg=1):
+                self.arg = arg
+
+        self.injector.injectable_global(TestClassFoo)
+        obj = self.injector.get(TestClassFoo)
+        self.assertIsInstance(obj, TestClassFoo)
+        self.assertEqual(obj.arg, 1)
+
+        @self.injector.test_case()
+        @self.injector.with_fixture(TestClassFoo, fixture_callback=lambda: TestClassFoo(6))
+        def example_test_case():
+            obj2 = self.injector.get(TestClassFoo)
+            self.assertIsInstance(obj2, TestClassFoo)
+            self.assertNotEqual(hash(obj), hash(obj2))
+            self.assertEqual(obj2.arg, 6)
+
+        example_test_case()
+
+        obj3 = self.injector.get(TestClassFoo)
+        self.assertEqual(hash(obj3), hash(obj))
+        self.assertEqual(obj3.arg, 1)
+
     def test_register_class_with_args(self):
         class TestClassFoo:
 

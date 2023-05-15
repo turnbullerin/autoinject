@@ -116,6 +116,18 @@ class InjectionManager:
             return outer_wrapper
         return self._test_case_wrapper(fixtures_or_fn, None)
 
+    def with_fixture(self, fixture_cls, fixture_obj_or_type=None, fixture_callback=None):
+        """Register a feature object, type, or callback as a fixture"""
+        if fixture_obj_or_type is None and fixture_callback is None:
+            raise ValueError("One of fixture object or callback must be provided")
+
+        def outer_wrapper(fn):
+            if not hasattr(fn, "_autoinject_fixtures"):
+                fn._autoinject_fixtures = {}
+            fn._autoinject_fixtures[fixture_cls] = (fixture_obj_or_type, fixture_callback)
+            return fn
+        return outer_wrapper
+
     def _test_case_wrapper(self, fn: callable, fixtures: dict = None) -> callable:
         """Handle creating a separate global context and test fixtures"""
         @wraps(fn)
@@ -123,11 +135,20 @@ class InjectionManager:
             # This creates an entirely different GLOBAL context as well local context, so
             # that test cases can be truly independent of the shared global state.
             with self.context_manager.subcontext() as ctx:
-                for cls_name in fixtures or []:
-                    if isinstance(fixtures[cls_name], type) or isinstance(fixtures[cls_name], str):
-                        self.cls_registry.register(cls_name, constructor=fixtures[cls_name], _force_override=True)
+                _fixtures = {} if not hasattr(fn, "_autoinject_fixtures") else fn._autoinject_fixtures
+                if fixtures:
+                    _fixtures.update(fixtures)
+                for cls_name, cls_obj in _fixtures.items():
+                    cls_callback = None
+                    if (isinstance(cls_obj, tuple) or isinstance(cls_obj, list)) and len(cls_obj) > 1:
+                        cls_callback = cls_obj[1]
+                        cls_obj = cls_obj[0]
+                    if cls_callback is not None:
+                        self.cls_registry.register(cls_name, constructor=cls_callback, _force_override=True)
+                    elif isinstance(cls_obj, type) or isinstance(cls_obj, str):
+                        self.cls_registry.register(cls_name, constructor=cls_obj, _force_override=True)
                     else:
-                        self.cls_registry.register(cls_name, constructor=lambda: fixtures[cls_name], _force_override=True)
+                        self.cls_registry.register(cls_name, constructor=lambda: cls_obj, _force_override=True)
                 return fn(*args, **kwargs)
         return inner_wrapper
 

@@ -14,6 +14,33 @@ import atexit
 GARBAGE_COLLECTION_FREQUENCY = 5
 
 
+class _SubContextManager:
+    """Manage a sub-context which will have a different GLOBAL state as well (used for test cases)."""
+
+    def __init__(self, context_manager):
+        self.context_manager = context_manager
+        self._global_cache = None
+        self._context_cache = None
+        self._constructors = None
+
+    def __enter__(self):
+        self._global_cache = self.context_manager._global_cache
+        self._context_cache = self.context_manager._context_cache
+        self._constructors = self.context_manager._registry.object_constructors
+        self.context_manager._global_cache = {}
+        self.context_manager._context_cache = {}
+        return self.context_manager
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.context_manager.teardown()
+        self.context_manager._global_cache = self._global_cache
+        self.context_manager._context_cache = self._context_cache
+        self.context_manager._registry.object_constructors = self._constructors
+        self._global_cache = None
+        self._context_cache = None
+        self._constructors = None
+
+
 class ContextManager:
     """  Responsible for managing the object caches based on the context.
 
@@ -108,7 +135,11 @@ class ContextManager:
             informant.check_expired_contexts()
         self._last_gc = time.monotonic()
 
+    def subcontext(self):
+        return _SubContextManager(self)
+
     def clear_cache(self, cls):
+        """Remove the class from all caches."""
         cls_as_str = self._registry.cls_to_str(cls)
         if cls_as_str in self._global_cache:
             del self._global_cache[cls_as_str]

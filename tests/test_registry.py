@@ -27,6 +27,12 @@ class TestRegistry(unittest.TestCase):
         self.assertTrue(self.registry.is_injectable(self.test_class))
         self.assertIsInstance(self.registry.get_instance(self.test_class), self.test_class)
 
+    def test_bad_register(self):
+        self.assertRaises(ValueError, self.registry.register, "foobar")
+
+    def test_bad_fetch(self):
+        self.assertRaises(autoinject.ClassNotFoundException, self.registry.get_cache_strategy, self.test_class)
+
     def test_register_class_by_name(self):
         self.assertFalse(self.registry.is_injectable("tests.test_registry.ForTestByName"))
         self.assertRaises(autoinject.ClassNotFoundException, self.registry.get_instance, "tests.test_registry.ForTestByName")

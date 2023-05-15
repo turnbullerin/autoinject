@@ -5,7 +5,9 @@
 
 """
 import enum
+import functools
 import importlib
+import typing as t
 
 
 class CacheStrategy(enum.Enum):
@@ -41,9 +43,10 @@ class ClassNotFoundException(ValueError):
 class ClassRegistry:
     """ Manages a list of classes and how they can be instantiated. """
 
-    def __init__(self):
+    def __init__(self, injector = None):
         """ Constructor """
         self.object_constructors = {}
+        self.injector = injector
 
     def cls_to_str(self, cls) -> str:
         """ Converts a type to a string that represents the fully-qualified name of the class.
@@ -68,11 +71,12 @@ class ClassRegistry:
         return self.cls_to_str(cls) in self.object_constructors
 
     def register(self,
-                 cls: type,
+                 cls: t.Union[type, str],
                  *args,
                  weight: int = 0,
                  constructor: callable = None,
                  caching_strategy: CacheStrategy = None,
+                 _force_override: bool = False,
                  **kwargs):
         """ Registers a class for injection and specifies how to construct it
 
@@ -94,6 +98,10 @@ class ClassRegistry:
         :param caching_strategy: Specify how instances of this class are to be cached. Defaults to
             :attr:`autoinject.class_registry.CacheStrategy.CONTEXT_CACHE`, i.e. different objects by context
         :type caching_strategy: :class:`autoinject.class_registry.CacheStrategy` or None
+        :param weight: Higher values override lower values
+        :type weight: int
+        :param _force_override: Set to true to ignore weight and replace the constructor anyways
+        :type _force_override: bool
         :param kwargs: Keyword arguments to pass to the constructor
         :type kwargs: any
         """
@@ -107,7 +115,7 @@ class ClassRegistry:
         if caching_strategy is None:
             caching_strategy = CacheStrategy.CONTEXT_CACHE if cls_str not in self.object_constructors else self.object_constructors[cls_str][3]
         # Ignore if a higher-weight constructor is already present
-        if cls_str in self.object_constructors and weight < self.object_constructors[cls_str][4]:
+        if (not _force_override) and cls_str in self.object_constructors and weight < self.object_constructors[cls_str][4]:
             return
         self.object_constructors[cls_str] = (constructor, args, kwargs, caching_strategy, weight)
 

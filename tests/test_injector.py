@@ -1,12 +1,11 @@
 import unittest
 import inspect
-import eptest
 import contextvars
+import autoinject
 
 
 cv: contextvars.ContextVar[str] = contextvars.ContextVar[str]("_test_hello", default=None)
 cv2 = contextvars.ContextVar[str]("_test2", default=None)
-import autoinject
 
 
 class NonLocalInjectionOne:
@@ -57,16 +56,32 @@ class TestInjection(unittest.TestCase):
         self.assertIsInstance(obj, TestClassFoo)
         self.assertEqual(obj.arg, 1)
 
-    def test_exception_in_block(self):
+    def test_value_exception_in_block(self):
+
         @self.injector.with_contextvars
         def make_error():
             def do_error():
-                raise ValueError()
+                raise ValueError("foobar")
 
-            c = contextvars.Context()
-            c2 = contextvars.Context()
-            c.run(c2.run, do_error)
+            try:
+                contextvars.copy_context().run(do_error)
+            except Exception as ex:
+                raise ValueError("inner")
+                print(ex)
         self.assertRaises(ValueError, make_error)
+
+    def test_exception_in_block(self):
+
+        class CustomException(Exception):
+            pass
+
+        @self.injector.with_contextvars
+        def make_error():
+            def do_error():
+                raise CustomException()
+
+            do_error()
+        self.assertRaises(CustomException, make_error)
 
     def test_inherited_injection(self):
 
@@ -121,6 +136,106 @@ class TestInjection(unittest.TestCase):
         result = test_method("second")
         self.assertEqual(result, "second")
         self.assertEqual(cv.get(), "first")
+
+    def test_test_case_wrapper_local(self):
+
+        class TestClassFoo:
+
+            def __init__(self, arg=1):
+                self.arg = arg
+
+        self.injector.injectable(TestClassFoo)
+        obj = self.injector.get(TestClassFoo)
+        self.assertIsInstance(obj, TestClassFoo)
+        self.assertEqual(obj.arg, 1)
+
+        @self.injector.test_case
+        def example_test_case():
+            obj2 = self.injector.get(TestClassFoo)
+            self.assertIsInstance(obj2, TestClassFoo)
+            self.assertNotEqual(hash(obj), hash(obj2))
+
+        example_test_case()
+
+        obj3 = self.injector.get(TestClassFoo)
+        self.assertEqual(hash(obj), hash(obj3))
+
+    def test_test_case_wrapper_obj(self):
+
+        class TestClassFoo:
+
+            def __init__(self, arg=1):
+                self.arg = arg
+
+        self.injector.injectable(TestClassFoo)
+        obj = self.injector.get(TestClassFoo)
+        self.assertIsInstance(obj, TestClassFoo)
+        self.assertEqual(obj.arg, 1)
+
+        @self.injector.test_case({TestClassFoo: TestClassFoo(5)})
+        def example_test_case():
+            obj2 = self.injector.get(TestClassFoo)
+            self.assertIsInstance(obj2, TestClassFoo)
+            self.assertEqual(obj2.arg, 5)
+            self.assertNotEqual(hash(obj), hash(obj2))
+
+        example_test_case()
+
+        obj3 = self.injector.get(TestClassFoo)
+        self.assertEqual(hash(obj), hash(obj3))
+
+    def test_test_case_wrapper_global(self):
+
+        class TestClassFoo:
+
+            def __init__(self, arg=1):
+                self.arg = arg
+
+        self.injector.injectable_global(TestClassFoo)
+        obj = self.injector.get(TestClassFoo)
+        self.assertIsInstance(obj, TestClassFoo)
+        self.assertEqual(obj.arg, 1)
+
+        @self.injector.test_case
+        def example_test_case():
+            obj2 = self.injector.get(TestClassFoo)
+            self.assertIsInstance(obj2, TestClassFoo)
+            self.assertNotEqual(hash(obj), hash(obj2))
+
+        example_test_case()
+
+        obj3 = self.injector.get(TestClassFoo)
+        self.assertEqual(hash(obj), hash(obj3))
+
+    def test_test_case_wrapper_fixture_type(self):
+
+        class TestClassFoo:
+
+            def __init__(self, arg=1):
+                self.arg = arg
+
+        class TestClassBar:
+
+            def __init__(self):
+                self.arg = 3
+
+        self.injector.injectable_global(TestClassFoo)
+        obj = self.injector.get(TestClassFoo)
+        self.assertIsInstance(obj, TestClassFoo)
+        self.assertEqual(obj.arg, 1)
+
+        @self.injector.test_case({TestClassFoo: TestClassBar})
+        def example_test_case():
+            obj2 = self.injector.get(TestClassFoo)
+            self.assertIsInstance(obj2, TestClassBar)
+            self.assertNotEqual(hash(obj), hash(obj2))
+            self.assertEqual(obj2.arg, 3)
+
+        example_test_case()
+
+        obj3 = self.injector.get(TestClassFoo)
+        self.assertEqual(hash(obj3), hash(obj))
+        self.assertEqual(obj3.arg, 1)
 
     def test_register_class_with_args(self):
         class TestClassFoo:

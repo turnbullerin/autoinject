@@ -67,9 +67,84 @@ obj = InjectMe()
 # obj.injected_attribute is set by the decorator before __init__() is called.
 ```
 
+## Specifying injected classes in tests
+
+You can override injected classes in your unit tests using the `@injector.test_case()` decorator. This provides an 
+independent global context within the test case function and allows you to pass a map of objects to inject. For example,
+
+```python
+
+from autoinject import injector 
+
+# Your injectable original class
+@injector.injectable_global 
+class ServiceConnection:
+  
+  def execute(self) -> int:
+    # Real connection code here, returns HTTP status code
+    pass
+  
+
+# The class you want to write a test case for that uses the injectable class.
+class UsesServiceConnection:
+  
+  connection: ServiceConnection = None
+  
+  @injector.construct 
+  def __init__(self):
+    pass
+  
+  def test_me(self) -> bool:
+    # Super simple, check if response code is under 400
+    resp_code = self.connection.execute()
+    return resp_code < 400
+  
+  
+# Testing stuff
+import unittest
+  
+# Stub for testing
+class _StubServiceFixture:
+  
+  def __init__(self, response_code):
+    self.response_code = response_code
+  
+  def execute(self) -> int:
+    return self.response_code
+
+
+# Test case
+class TestUsesServiceConnection(unittest.TestCase):
+
+    @injector.test_case({
+      ServiceConnection: _StubServiceFixture(200)
+    })
+    def test_success_200(self):
+        test_obj = UsesServiceConnection()  # this will use the injected objects now
+        self.assertTrue(test_obj.test_me())
+
+
+    @injector.test_case({
+      ServiceConnection: _StubServiceFixture(400)
+    })
+    def test_failure_400(self):
+        test_obj = UsesServiceConnection() 
+        self.assertFalse(test_obj.test_me())
+
+
+```
+
 Read the [full documentation](https://autoinject.readthedocs.io/en/latest/?) for more details.
 
 ## Changelog
+
+### v1.3.0
+- The new `@injector.test_case()` decorator is available for use with unit testing frameworks. It executes the decorated
+  function with a different global and non-global context to ensure the independence of test functions. In addition, one
+  can override the injected classes to provide specific test fixtures. These are passed as a dict of either `type` objects 
+  or fully qualified class names as strings as keys and either the `type` or class name as string (to create the object), 
+  or an object or function to use as the injected object.
+- A bug was fixed where exceptions within a context caused issues with the new contextvars integration.
 
 ### v1.2.0
 - Contextvar-driven contexts are now respected by default
@@ -94,7 +169,7 @@ Read the [full documentation](https://autoinject.readthedocs.io/en/latest/?) for
       method. This copy is transient and remade each time, so modules making extensive use of it can call `copy()` and
       check the copy.
 - Note that, unlike the context manager, the decorators also RUN the inner code in the given context.  
-- Thread-handling was improved significantly and now also includes a wrapper function for your `run()` methods to
+- Thread-handling was improved significantly and now also includes a wrapper function for `threading.Thread.run()` methods to
   ensure clean-up (`@injector.as_thread_run()`). This also is a wrapper around `@injector.inject` so you can inject
   variables into your `run()` method directly.
 

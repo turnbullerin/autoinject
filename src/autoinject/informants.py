@@ -192,9 +192,10 @@ class ContextVarManager:
         if self._delegate_run and self._context is not None:
             # Prevent running the context from within the context
             self._delegate_run = False
-            result = self._context.run(fn, *args, **kwargs)
-            self._delegate_run = True
-            return result
+            try:
+                return self._context.run(fn, *args, **kwargs)
+            finally:
+                self._delegate_run = True
         else:
             return fn(*args, **kwargs)
 

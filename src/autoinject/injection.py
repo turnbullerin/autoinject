@@ -76,7 +76,7 @@ class InjectionManager:
 
     def __init__(self, include_entry_points=True):
         """ Constructor """
-        self.cls_registry = ClassRegistry()
+        self.cls_registry = ClassRegistry(self)
         self.context_manager = ContextManager(self.cls_registry)
         # Register the class registry for injection, using the local instance
         self.cls_registry.register(
@@ -107,6 +107,29 @@ class InjectionManager:
             for inject in auto_inject:
                 cls = inject.load()
                 self.register_constructor(cls, constructor=cls)
+
+    def test_case(self, fixtures_or_fn: t.Union[callable, dict, None] = None) -> callable:
+        """Decorate a test case to get a separate global context and to provide fixtures."""
+        if isinstance(fixtures_or_fn, dict) or fixtures_or_fn is None:
+            def outer_wrapper(fn):
+                return self._test_case_wrapper(fn, fixtures_or_fn)
+            return outer_wrapper
+        return self._test_case_wrapper(fixtures_or_fn, None)
+
+    def _test_case_wrapper(self, fn: callable, fixtures: dict = None) -> callable:
+        """Handle creating a separate global context and test fixtures"""
+        @wraps(fn)
+        def inner_wrapper(*args, **kwargs):
+            # This creates an entirely different GLOBAL context as well local context, so
+            # that test cases can be truly independent of the shared global state.
+            with self.context_manager.subcontext() as ctx:
+                for cls_name in fixtures or []:
+                    if isinstance(fixtures[cls_name], type) or isinstance(fixtures[cls_name], str):
+                        self.cls_registry.register(cls_name, constructor=fixtures[cls_name], _force_override=True)
+                    else:
+                        self.cls_registry.register(cls_name, constructor=lambda: fixtures[cls_name], _force_override=True)
+                return fn(*args, **kwargs)
+        return inner_wrapper
 
     def ContextVars(self, context: t.Union[contextvars.Context, ContextVarManager, str, None] = "_default", suppress_exit_warning: bool = False):
         """Use as a context manager for managing an area where all context_cache injectables are the same."""
@@ -293,7 +316,7 @@ class InjectionManager:
         @wraps(func)
         async def wrapper(*args, **kwargs):
             if with_contextvars:
-                with ContextVarManager(self.context_manager.contextvar_info, context_mode, delegate_run=False) as ctx:
+                with ContextVarManager(self.context_manager.contextvar_info, context_mode) as ctx:
                     new_args, new_kwargs = self._bind_parameters(func, args, kwargs, ctx)
                     return await ctx.run(func, *new_args, **new_kwargs)
             else:

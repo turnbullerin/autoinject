@@ -138,6 +138,10 @@ Read the [full documentation](https://autoinject.readthedocs.io/en/latest/?) for
 
 ## Changelog
 
+### v1.3.3
+- Member lists of objects are now cached to prevent multiple calls to ``inspect.getmembers()`` when the 
+same class is created many times. This results in significant speed increases.
+
 ### v1.3.0
 - The new `@injector.test_case()` decorator is available for use with unit testing frameworks. It executes the decorated
   function with a different global and non-global context to ensure the independence of test functions. In addition, one

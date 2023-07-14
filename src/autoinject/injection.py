@@ -76,6 +76,7 @@ class InjectionManager:
 
     def __init__(self, include_entry_points=True):
         """ Constructor """
+        self._members_cache = {}
         self.cls_registry = ClassRegistry(self)
         self.context_manager = ContextManager(self.cls_registry)
         # Register the class registry for injection, using the local instance
@@ -220,6 +221,7 @@ class InjectionManager:
         self.cls_registry.register(cls_name, *args, constructor=constructor, **kwargs)
         if clear_cache:
             self.context_manager.clear_cache(cls_name)
+        self._members_cache = {}
 
     def get(self, cls_name):
         """ Wrapper around :meth:`autoinject.context_manager.ContextManager.get_object` """
@@ -381,15 +383,26 @@ class InjectionManager:
         @wraps(func)
         def wrapper(*args, **kwargs):
             obj = args[0]  # self
-            type_map = self._get_bindable_attributes(obj.__class__)
-            for name, val in inspect.getmembers(obj.__class__):
-                if name[0:2] == "__":
-                    continue
-                if name in type_map and getattr(obj, name) is None:
-                    if self.cls_registry.is_injectable(type_map[name]):
-                        setattr(obj, name, self.context_manager.get_object(type_map[name]))
+            for attr_name, attr_type in self._get_bindable_members(obj.__class__):
+                if getattr(obj, attr_name) is None:
+                    setattr(obj, attr_name, self.context_manager.get_object(attr_type))
             return func(*args, **kwargs)
         return wrapper
+
+    def _get_bindable_members(self, cls: type) -> list[str, t.Union[type, str]]:
+        """Given a type, find all members we should check"""
+        if cls not in self._members_cache:
+            self._members_cache[cls] = []
+            type_map = self._get_bindable_attributes(cls)
+            for name, _ in inspect.getmembers(cls):
+                if name[0:2] == "__":
+                    continue
+                if name not in type_map:
+                    continue
+                if not self.cls_registry.is_injectable(type_map[name]):
+                    continue
+                self._members_cache[cls].append((name, type_map[name]))
+        return self._members_cache[cls]
 
     def _get_bindable_attributes(self, cls: type) -> dict:
         """Given a type, find all the bindable attributes using the annotations."""

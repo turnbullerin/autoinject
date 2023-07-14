@@ -56,7 +56,7 @@ class ClassRegistry:
         :rtype: str
         """
         info = str(cls)
-        if info.startswith("<class '"):
+        if len(info) > 10 and info[0:8] == "<class '":
             info = info[8:-2]
         return info
 

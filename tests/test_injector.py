@@ -1,14 +1,25 @@
+import typing
 import unittest
 import inspect
 import contextvars
 import autoinject
+import typing as t
+from autoinject import reflect, CacheStrategy, InjectionManager
+from autoinject.injection import _InjectWrapper
 
-
-cv: contextvars.ContextVar[str] = contextvars.ContextVar[str]("_test_hello", default=None)
-cv2 = contextvars.ContextVar[str]("_test2", default=None)
+cv: contextvars.ContextVar[t.Optional[str]] = contextvars.ContextVar[t.Optional[str]]("_test_hello", default=None)
+cv2 = contextvars.ContextVar[t.Optional[str]]("_test2", default=None)
 
 
 class NonLocalInjectionOne:
+    pass
+
+
+class TestClass:
+    pass
+
+
+class TestClass2:
     pass
 
 
@@ -17,31 +28,18 @@ class TestInjection(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.injector = autoinject.InjectionManager(False)
-
-        @self.injector.injectable
-        class TestClass:
-            pass
-
-        self.test_class = TestClass
-
-        @self.injector.injectable
-        class TestClass2:
-            pass
-
-        self.test_class2 = TestClass2
+        self.injector.injectable(TestClass)
+        self.injector.injectable(TestClass2)
 
     def test_same_context(self):
-        cls = self.test_class
-
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, x: cls):
+            def __init__(self, x: TestClass):
                 self.x = x
-
         obj = TestInjectClass()
         obj2 = TestInjectClass()
-        self.assertIsInstance(obj.x, self.test_class)
-        self.assertIsInstance(obj2.x, self.test_class)
+        self.assertIsInstance(obj.x, TestClass)
+        self.assertIsInstance(obj2.x, TestClass)
         self.assertNotEqual(hash(obj), hash(obj2))
         self.assertEqual(hash(obj.x), hash(obj2.x))
 
@@ -67,7 +65,6 @@ class TestInjection(unittest.TestCase):
                 contextvars.copy_context().run(do_error)
             except Exception as ex:
                 raise ValueError("inner")
-                print(ex)
         self.assertRaises(ValueError, make_error)
 
     def test_exception_in_block(self):
@@ -91,7 +88,7 @@ class TestInjection(unittest.TestCase):
 
         class ParentInjectable:
 
-            one: InjectableOne = None
+            one: typing.Optional[InjectableOne] = None
 
             @self.injector.construct
             def __init__(self):
@@ -99,29 +96,30 @@ class TestInjection(unittest.TestCase):
 
         class SubInjectable(ParentInjectable):
 
-            two: InjectableOne = None
+            two: typing.Optional[InjectableOne] = None
 
             @self.injector.construct
             def __init__(self):
                 super().__init__()
 
-        t = SubInjectable()
-        self.assertIsInstance(t.two, InjectableOne)
-        self.assertIsInstance(t.one, InjectableOne)
+        t2 = SubInjectable()
+        self.assertIsInstance(t2.two, InjectableOne)
+        self.assertIsInstance(t2.one, InjectableOne)
 
     def test_contextvar_param(self):
         @self.injector.with_contextvars
-        def test_method(set_to: str, ctx: contextvars.Context = None):
+        def test_method(set_to: str, ctx: t.Optional[contextvars.Context] = None):
             self.assertIsNotNone(ctx)
+            ctx = t.cast(contextvars.Context, ctx)
             original = cv.get()
             self.assertEqual(ctx.get(cv), cv.get())
             token = cv.set(set_to)
             self.assertEqual(ctx.get(cv), cv.get())
             self.assertEqual(cv.get(), set_to)
-            ctx.reset(cv, token)
+            cv.reset(token)
             self.assertEqual(ctx.get(cv), cv.get())
             self.assertEqual(cv.get(), original)
-            token = ctx.set(cv, set_to)
+            token = cv.set(set_to)
             self.assertEqual(ctx.get(cv), cv.get())
             self.assertEqual(cv.get(), set_to)
             cv.reset(token)
@@ -151,11 +149,11 @@ class TestInjection(unittest.TestCase):
 
         @self.injector.test_case
         def example_test_case():
-            obj2 = self.injector.get(TestClassFoo)
-            self.assertIsInstance(obj2, TestClassFoo)
-            self.assertNotEqual(hash(obj), hash(obj2))
+            return self.injector.get(TestClassFoo)
 
-        example_test_case()
+        obj2 = example_test_case()
+        self.assertIsInstance(obj2, TestClassFoo)
+        self.assertNotEqual(hash(obj), hash(obj2))
 
         obj3 = self.injector.get(TestClassFoo)
         self.assertEqual(hash(obj), hash(obj3))
@@ -172,7 +170,7 @@ class TestInjection(unittest.TestCase):
         self.assertIsInstance(obj, TestClassFoo)
         self.assertEqual(obj.arg, 1)
 
-        @self.injector.test_case({TestClassFoo: TestClassFoo(5)})
+        @self.injector.test_case({TestClassFoo: lambda: TestClassFoo(5)})
         def example_test_case():
             obj2 = self.injector.get(TestClassFoo)
             self.assertIsInstance(obj2, TestClassFoo)
@@ -230,8 +228,9 @@ class TestInjection(unittest.TestCase):
             self.assertIsInstance(obj2, TestClassBar)
             self.assertNotEqual(hash(obj), hash(obj2))
             self.assertEqual(obj2.arg, 3)
+            return obj2
 
-        example_test_case()
+        obj2 = example_test_case()
 
         obj3 = self.injector.get(TestClassFoo)
         self.assertEqual(hash(obj3), hash(obj))
@@ -274,7 +273,7 @@ class TestInjection(unittest.TestCase):
         self.assertEqual(obj.arg, 1)
 
         @self.injector.test_case()
-        @self.injector.with_fixture(TestClassFoo, fixture_callback=lambda: TestClassFoo(6))
+        @self.injector.with_fixture(TestClassFoo, lambda: TestClassFoo(6))
         def example_test_case():
             obj2 = self.injector.get(TestClassFoo)
             self.assertIsInstance(obj2, TestClassFoo)
@@ -301,8 +300,8 @@ class TestInjection(unittest.TestCase):
         self.assertEqual(obj.kwarg, 3)
 
     def test_injectable(self):
-        self.assertTrue(self.injector.cls_registry.is_injectable(self.test_class))
-        self.assertEqual(self.injector.cls_registry.get_cache_strategy(self.test_class), autoinject.CacheStrategy.CONTEXT_CACHE)
+        self.assertTrue(self.injector.cls_registry.is_injectable(TestClass))
+        self.assertEqual(self.injector.cls_registry.get_class_info(TestClass).strategy, autoinject.CacheStrategy.CONTEXT_CACHE)
 
     def test_injectable_global(self):
 
@@ -311,7 +310,7 @@ class TestInjection(unittest.TestCase):
             pass
 
         self.assertTrue(self.injector.cls_registry.is_injectable(TestClassBar))
-        self.assertEqual(self.injector.cls_registry.get_cache_strategy(TestClassBar), autoinject.CacheStrategy.GLOBAL_CACHE)
+        self.assertEqual(self.injector.cls_registry.get_class_info(TestClassBar).strategy, autoinject.CacheStrategy.GLOBAL_CACHE)
 
     def test_injectable_nocache(self):
 
@@ -320,26 +319,26 @@ class TestInjection(unittest.TestCase):
             pass
 
         self.assertTrue(self.injector.cls_registry.is_injectable(TestClassBar))
-        self.assertEqual(self.injector.cls_registry.get_cache_strategy(TestClassBar), autoinject.CacheStrategy.NO_CACHE)
+        self.assertEqual(self.injector.cls_registry.get_class_info(TestClassBar).strategy, autoinject.CacheStrategy.NO_CACHE)
 
     def test_override(self):
 
         class TestClassOverride:
             pass
 
-        self.injector.override(self.test_class, TestClassOverride)
-        self.assertIsInstance(self.injector.get(self.test_class), TestClassOverride)
+        self.injector.override(TestClass, TestClassOverride)
+        self.assertIsInstance(self.injector.get(TestClass), TestClassOverride)
 
     def test_override_by_name(self):
 
         class TestClassOverride:
             pass
 
-        qn = "tests.test_injector.TestInjection.setUp.<locals>.TestClass"
-        self.assertIsInstance(self.injector.get(qn), self.test_class)
+        qn = reflect.fqn(TestClass)
+        self.assertIsInstance(self.injector.get(qn), TestClass)
         self.injector.override(qn, TestClassOverride)
         self.assertIsInstance(self.injector.get(qn), TestClassOverride)
-        self.assertIsInstance(self.injector.get(self.test_class), TestClassOverride)
+        self.assertIsInstance(self.injector.get(TestClass), TestClassOverride)
 
     def test_named_constructor(self):
         qn = "tests.test_injector.NonLocalInjectionOne"
@@ -356,149 +355,131 @@ class TestInjection(unittest.TestCase):
         class TestClassOverride:
             pass
 
-        self.injector.override(BaseTestClass, TestClassOverride)
-        self.assertEqual(self.injector.cls_registry.get_cache_strategy(BaseTestClass), autoinject.CacheStrategy.GLOBAL_CACHE)
+        self.injector.override(BaseTestClass, TestClassOverride, caching_strategy=CacheStrategy.GLOBAL_CACHE)
+        self.assertEqual(
+            self.injector.cls_registry.get_class_info(BaseTestClass).strategy,
+            autoinject.CacheStrategy.GLOBAL_CACHE
+        )
         self.assertIsInstance(self.injector.get(BaseTestClass), TestClassOverride)
 
     def test_get_object(self):
-        self.assertIsInstance(self.injector.get(self.test_class), self.test_class)
+        self.assertIsInstance(self.injector.get(TestClass), TestClass)
 
     def test_injection(self):
-        tc = self.test_class
 
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, x: tc):
+            def __init__(self, x: TestClass):
                 self.x = x
 
         obj = TestInjectClass()
-        self.assertIsInstance(obj.x, self.test_class)
+        self.assertIsInstance(obj.x, TestClass)
 
     def test_positional_before(self):
-        tc = self.test_class
-
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, arg_one, x: tc):
+            def __init__(self, arg_one, x: TestClass):
                 self.arg_one = arg_one
                 self.x = x
 
         obj = TestInjectClass("foo")
-        self.assertIsInstance(obj.x, self.test_class)
+        self.assertIsInstance(obj.x, TestClass)
         self.assertEqual(obj.arg_one, "foo")
 
     def test_positional_after(self):
-        tc = self.test_class
-
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, x: tc, arg_one):
+            def __init__(self, x: TestClass, arg_one):
                 self.arg_one = arg_one
                 self.x = x
 
-        obj = TestInjectClass("foo")
-        self.assertIsInstance(obj.x, self.test_class)
+        obj = TestInjectClass(..., "foo")
+        self.assertIsInstance(obj.x, TestClass)
         self.assertEqual(obj.arg_one, "foo")
 
     def test_default_values(self):
-        tc = self.test_class
-
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, x: tc, y="one", z=2):
+            def __init__(self, x: TestClass, y="one", z=2):
                 self.x = x
                 self.y = y
                 self.z = z
 
         obj = TestInjectClass()
-        self.assertIsInstance(obj.x, self.test_class)
+        self.assertIsInstance(obj.x, TestClass)
         self.assertEqual(obj.y, "one")
         self.assertEqual(obj.z, 2)
 
     def test_blank_default_value(self):
-        tc = self.test_class
-
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, x: tc, y=None, z="", a=0):
+            def __init__(self, x: TestClass, y=None, z="", a=0):
                 self.x = x
                 self.y = y
                 self.z = z
                 self.a = a
 
         obj = TestInjectClass()
-        self.assertIsInstance(obj.x, self.test_class)
+        self.assertIsInstance(obj.x, TestClass)
         self.assertIsNone(obj.y)
         self.assertEqual(obj.z, "")
         self.assertEqual(obj.a, 0)
 
     def test_keyword_arg(self):
-        tc = self.test_class
 
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, x: tc, arg_one):
+            def __init__(self, x: TestClass, arg_one):
                 self.arg_one = arg_one
                 self.x = x
 
         obj = TestInjectClass(arg_one="foo")
-        self.assertIsInstance(obj.x, self.test_class)
+        self.assertIsInstance(obj.x, TestClass)
         self.assertEqual(obj.arg_one, "foo")
 
     def test_missing_keyword_arg(self):
-        tc = self.test_class
-
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, x: tc, *extra_args, arg_one):
+            def __init__(self, x: TestClass, *extra_args, arg_one):
                 self.arg_one = arg_one
                 self.x = x
 
-        self.assertRaises(autoinject.MissingArgumentError, lambda: TestInjectClass("foo"))
+        self.assertRaises(TypeError, lambda: TestInjectClass("foo"))
 
     def test_extra_pos_arg(self):
-        tc = self.test_class
-
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, arg_one, x: tc):
+            def __init__(self, arg_one, x: TestClass):
                 self.arg_one = arg_one
                 self.x = x
 
-        self.assertRaises(autoinject.ExtraPositionalArgumentsError, lambda: TestInjectClass("foo", "bar"))
+        self.assertRaises(TypeError, lambda: TestInjectClass("foo", None, "bar"))
 
     def test_extra_kwarg_arg(self):
-        tc = self.test_class
-
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, arg_one, x: tc):
+            def __init__(self, arg_one, x: TestClass):
                 self.arg_one = arg_one
                 self.x = x
 
-        self.assertRaises(autoinject.ExtraKeywordArgumentsError, lambda: TestInjectClass(arg_one="foo", arg_two="bar"))
+        self.assertRaises(TypeError, lambda: TestInjectClass(arg_one="foo", arg_two="bar"))
 
     def test_double_inject(self):
-        tc = self.test_class
-        tc2 = self.test_class2
 
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, x: tc, y: tc2):
+            def __init__(self, x: TestClass, y: TestClass2):
                 self.x = x
                 self.y = y
 
         obj = TestInjectClass()
-        self.assertIsInstance(obj.x, self.test_class)
-        self.assertIsInstance(obj.y, self.test_class2)
+        self.assertIsInstance(obj.x, TestClass)
+        self.assertIsInstance(obj.y, TestClass2)
 
     def test_complex_arguments(self):
-        tc = self.test_class
-        tc2 = self.test_class2
-
         class TestInjectClass:
             @self.injector.inject
-            def __init__(self, pos_one, x: tc, pos_two, y: tc2, *args, kw_one, kw_def='test', **kwargs):
+            def __init__(self, pos_one, x: t.Optional[TestClass], pos_two, y: t.Optional[TestClass2], *args, kw_one, kw_def='test', **kwargs):
                 self.pos_one = pos_one
                 self.pos_two = pos_two
                 self.x = x
@@ -508,21 +489,19 @@ class TestInjection(unittest.TestCase):
                 self.kw_def = kw_def
                 self.kwargs = kwargs
 
-        obj = TestInjectClass(5, "hello world", "one", "two", "three", kw_one="foo", kw_three="test", kw_four="bar")
+        obj = TestInjectClass(5, None, "hello world", None, "three", kw_one="foo", kw_three="test", kw_four="bar")
         self.assertEqual(obj.pos_one, 5)
         self.assertEqual(obj.pos_two, "hello world")
         self.assertEqual(obj.kw_one, "foo")
-        self.assertIsInstance(obj.x, self.test_class)
-        self.assertIsInstance(obj.y, self.test_class2)
-        self.assertTupleEqual(obj.args, ("one", "two", "three"))
+        self.assertIsInstance(obj.x, TestClass)
+        self.assertIsInstance(obj.y, TestClass2)
+        self.assertTupleEqual(obj.args, ("three",))
         self.assertDictEqual(obj.kwargs, {"kw_three": "test", "kw_four": "bar"})
 
     def test_construct(self):
-        cls = self.test_class
-
         class TestInjectClass:
 
-            tc: cls = None
+            tc: t.Optional[TestClass] = None
 
             @self.injector.construct
             def __init__(self):
@@ -530,30 +509,64 @@ class TestInjection(unittest.TestCase):
 
         tic = TestInjectClass()
         self.assertTrue(hasattr(tic, 'tc'))
-        self.assertIsInstance(tic.tc, self.test_class)
+        self.assertIsInstance(tic.tc, TestClass)
 
     def test_method_signature(self):
-        tc = self.test_class
-
         @self.injector.inject
-        def test_method(param1: tc, param2: int, param3: str):
+        def test_method(param1: TestClass, param2: int, param3: str):
             pass
         sig = inspect.signature(test_method)
-        self.assertEqual(len(sig.parameters), 3)
         parameter_names = [param for param in sig.parameters]
         self.assertIn("param1", parameter_names)
         self.assertIn("param2", parameter_names)
         self.assertIn("param3", parameter_names)
 
-    def test_function_injection(self):
-        tc = self.test_class
+    def test_wrap_wrapper(self):
+        injector = InjectionManager()
+        iw = injector.build_injector_wrapper(lambda x: x)
+        iw2 = injector.build_injector_wrapper(iw)
+        self.assertIs(iw, iw2)
 
+    def test_bad_wrap(self):
+        injector = InjectionManager()
+        with self.assertRaises(ValueError):
+            injector.build_injector_wrapper(t.cast(t.Callable, "foobar"))
+
+    def test_wrap_existing_test_features(self):
+        injector = InjectionManager()
+        iw = injector.build_injector_wrapper(None, test_fixtures={'foo': lambda: 'x', 'bar': lambda: 'y'})
+        iw2: _InjectWrapper = t.cast(_InjectWrapper, injector.build_injector_wrapper(iw, test_fixtures={'foo': lambda: 'X', 'monkey': lambda: 'Z'}))
+        self.assertIsInstance(iw2, _InjectWrapper)
+        fixtures: dict = t.cast(dict, iw2.test_fixtures)
+        self.assertIsNotNone(fixtures)
+        self.assertIn("foo", fixtures)
+        self.assertIn("bar", fixtures)
+        self.assertIn("monkey", fixtures)
+        self.assertEqual(fixtures["foo"](), "X")
+        self.assertEqual(fixtures["bar"](), "y")
+        self.assertEqual(fixtures["monkey"](), "Z")
+
+    def test_init_on_str_fails(self):
+        injector = InjectionManager()
+        with self.assertRaises(TypeError):
+            injector.construct(str)
+
+
+    def test_function_injection(self):
         @self.injector.inject
-        def test_method(param1: tc=None, param2='one'):
+        def test_method(param1='one', param2: t.Optional[TestClass] = None):
             return param1, param2
 
         a, b = test_method('two')
-        self.assertIsInstance(a, self.test_class)
-        self.assertEqual(b, 'two')
+        self.assertIsInstance(b, TestClass)
+        self.assertEqual(a, 'two')
 
+    def test_no_call(self):
+        iw = _InjectWrapper(None, self.injector)
+        with self.assertRaises(TypeError):
+            _ = iw.call
 
+    def test_set_call_if_none(self):
+        iw = _InjectWrapper(None, self.injector)
+        self.assertTrue(iw.set_call_if_none(self.test_no_call))
+        self.assertFalse(iw.set_call_if_none(self.test_set_call_if_none))

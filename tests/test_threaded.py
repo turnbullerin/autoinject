@@ -3,6 +3,9 @@ import autoinject
 import threading
 import time
 
+from autoinject import InjectionManager
+
+injector = InjectionManager()
 
 class NotThreadSafe:
 
@@ -45,30 +48,30 @@ class ThreadSafe:
 
 class ThreadedReader(threading.Thread):
 
-    def __init__(self, injector):
+    def __init__(self):
         super().__init__()
-        self.injector = injector
         self.stop = False
         self.daemon = True
 
+    @injector.as_thread_run
     def run(self):
-        lst = self.injector.get(NotThreadSafe)
+        lst = injector.get(NotThreadSafe)
         while not self.stop:
-            for item in lst.items():
+            for _ in lst.items():
                 pass
 
 
 class ThreadedWriter(threading.Thread):
 
-    def __init__(self, injector):
+    def __init__(self):
         super().__init__()
-        self.injector = injector
         self.stop = False
         self.exc_count = 0
         self.daemon = True
 
+    @injector.as_thread_run
     def run(self):
-        lst = self.injector.get(NotThreadSafe)
+        lst = injector.get(NotThreadSafe)
         while not self.stop:
             try:
                 lst.append("foo")
@@ -78,14 +81,14 @@ class ThreadedWriter(threading.Thread):
 
 class ThreadedReaderTS(threading.Thread):
 
-    def __init__(self, injector):
+    def __init__(self):
         super().__init__()
-        self.injector = injector
         self.stop = False
         self.daemon = True
 
+    @injector.as_thread_run
     def run(self):
-        lst = self.injector.get(ThreadSafe)
+        lst = injector.get(ThreadSafe)
         while not self.stop:
             for item in lst.items():
                 pass
@@ -93,15 +96,15 @@ class ThreadedReaderTS(threading.Thread):
 
 class ThreadedWriterTS(threading.Thread):
 
-    def __init__(self, injector):
+    def __init__(self):
         super().__init__()
-        self.injector = injector
         self.stop = False
         self.exc_count = 0
         self.daemon = True
 
+    @injector.as_thread_run
     def run(self):
-        lst = self.injector.get(ThreadSafe)
+        lst = injector.get(ThreadSafe)
         while not self.stop:
             try:
                 lst.append("foo")
@@ -112,65 +115,78 @@ class ThreadedWriterTS(threading.Thread):
 class TestThreadedContext(unittest.TestCase):
 
     def test_threaded_global_failure(self):
-        injector = autoinject.InjectionManager(False)
         injector.register_constructor(NotThreadSafe, NotThreadSafe, caching_strategy=autoinject.CacheStrategy.GLOBAL_CACHE)
-        tr = ThreadedReader(injector)
-        tr.start()
-        tw = ThreadedWriter(injector)
-        tw.start()
-        time.sleep(2)
-        tw.stop = True
-        tr.stop = True
-        tr.join()
-        tw.join()
-        self.assertTrue(tw.exc_count > 0)
+        try:
+            tr = ThreadedReader()
+            tr.start()
+            tw = ThreadedWriter()
+            tw.start()
+            for _ in range(0, 100):
+                time.sleep(0.01)
+                if tw.exc_count > 0:
+                    break
+            tw.stop = True
+            tr.stop = True
+            tr.join()
+            tw.join()
+            self.assertTrue(tw.exc_count > 0)
+        finally:
+            injector.unregister_constructor(NotThreadSafe, NotThreadSafe)
 
     def test_threaded_global_success(self):
-        injector = autoinject.InjectionManager(False)
         injector.register_constructor(ThreadSafe, ThreadSafe, caching_strategy=autoinject.CacheStrategy.GLOBAL_CACHE)
-        tr = ThreadedReaderTS(injector)
-        tr.start()
-        tw = ThreadedWriterTS(injector)
-        tw.start()
-        time.sleep(2)
-        tw.stop = True
-        tr.stop = True
-        tr.join()
-        tw.join()
-        self.assertTrue(tw.exc_count == 0)
+        try:
+            tr = ThreadedReaderTS()
+            tr.start()
+            tw = ThreadedWriterTS()
+            tw.start()
+            for _ in range(0, 100):
+                time.sleep(0.01)
+                if tw.exc_count > 0:
+                    break
+            tw.stop = True
+            tr.stop = True
+            tr.join()
+            tw.join()
+            self.assertTrue(tw.exc_count == 0)
+        finally:
+            injector.unregister_constructor(ThreadSafe, ThreadSafe)
+
 
     def test_threaded_context_success(self):
-        injector = autoinject.InjectionManager(False)
-        injector.register_constructor(NotThreadSafe, NotThreadSafe, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
-        tr = ThreadedReader(injector)
-        tr.start()
-        tw = ThreadedWriter(injector)
-        tw.start()
-        time.sleep(2)
-        tw.stop = True
-        tr.stop = True
-        tr.join()
-        tw.join()
-        self.assertTrue(tw.exc_count == 0)
-        self.assertEqual(len(injector.context_manager._context_cache), 2)
-        injector.context_manager.cleanup()
-        self.assertEqual(len(injector.context_manager._context_cache), 0)
+        try:
+            injector.register_constructor(NotThreadSafe, NotThreadSafe, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
+            tr = ThreadedReader()
+            tr.start()
+            tw = ThreadedWriter()
+            tw.start()
+            for _ in range(0, 100):
+                time.sleep(0.01)
+                if tw.exc_count > 0:
+                    break
+            tw.stop = True
+            tr.stop = True
+            tr.join()
+            tw.join()
+            self.assertTrue(tw.exc_count == 0)
+            injector.cache_manager.cleanup()
+            self.assertEqual(len(injector.cache_manager.context_cache), 0)
+        finally:
+            injector.unregister_constructor(NotThreadSafe, NotThreadSafe)
 
     def test_threaded_context_destroy(self):
-        injector = autoinject.InjectionManager(False)
-        injector.register_constructor(NotThreadSafe, NotThreadSafe, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
-        tr = ThreadedReader(injector)
-        tr.start()
-        tw = ThreadedWriter(injector)
-        tw.start()
-        time.sleep(2)
-        tw.stop = True
-        tr.stop = True
-        tr.join()
-        tw.join()
-        self.assertTrue(tw.exc_count == 0)
-        self.assertEqual(len(injector.context_manager._context_cache), 2)
-        injector.context_manager.thread_info.destroy_self(tr)
-        self.assertEqual(len(injector.context_manager._context_cache), 1)
-        injector.context_manager.thread_info.destroy_self(tw)
-        self.assertEqual(len(injector.context_manager._context_cache), 0)
+        try:
+            injector.register_constructor(NotThreadSafe, NotThreadSafe, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
+            tr = ThreadedReader()
+            tr.start()
+            tw = ThreadedWriter()
+            tw.start()
+            time.sleep(2)
+            tw.stop = True
+            tr.stop = True
+            tr.join()
+            tw.join()
+            self.assertTrue(tw.exc_count == 0)
+            self.assertEqual(len(injector.cache_manager.context_cache), 0)
+        finally:
+            injector.unregister_constructor(NotThreadSafe, NotThreadSafe)

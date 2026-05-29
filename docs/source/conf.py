@@ -18,11 +18,11 @@ sys.path.insert(0, os.path.abspath(r'..\..\src'))
 # -- Project information -----------------------------------------------------
 
 project = 'autoinject'
-copyright = '2022, Erin Turnbull'
+copyright = '2022-2026, Erin Turnbull'
 author = 'Erin Turnbull'
 
 # The full version, including alpha/beta/rc tags
-release = '1.3.3'
+release = '2.0.0'
 
 
 # -- General configuration ---------------------------------------------------

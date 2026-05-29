@@ -1,0 +1,1 @@
+from tests.package._service import injector, Service

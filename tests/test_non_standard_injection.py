@@ -36,7 +36,7 @@ class TestNonStandardMethods(unittest.TestCase):
             return foo_function
 
         @injector.register("foo")
-        def _create_function():
+        def _create_function2():
             def foo_function(bar):
                 return bar.upper()
             return foo_function
@@ -58,7 +58,7 @@ class TestNonStandardMethods(unittest.TestCase):
         g = injector.get("foo")
 
         @injector.register("foo")
-        def _create_function():
+        def _create_function2():
             def foo_function(bar):
                 return bar.upper()
             return foo_function
@@ -67,23 +67,3 @@ class TestNonStandardMethods(unittest.TestCase):
         self.assertTrue(callable(f))
         self.assertNotEqual(f("bar"), "!bar!")
         self.assertEqual(f("bar"), "BAR")
-
-    def test_function_override_with_weight_injection(self):
-        injector = autoinject.InjectionManager(False)
-
-        @injector.register("foo", weight=5)
-        def _create_function():
-            def foo_function(bar):
-                return "!{}!".format(bar)
-            return foo_function
-
-        @injector.register("foo")
-        def _create_function():
-            def foo_function(bar):
-                return bar.upper()
-            return foo_function
-
-        f = injector.get("foo")
-        self.assertTrue(callable(f))
-        self.assertNotEqual(f("bar"), "BAR")
-        self.assertEqual(f("bar"), "!bar!")

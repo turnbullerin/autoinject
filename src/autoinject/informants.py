@@ -11,32 +11,43 @@ from abc import ABC, abstractmethod
 import threading
 import secrets
 import logging
+import typing as t
+import autoinject.types as ait
+
+if t.TYPE_CHECKING: # pragma: no cover # type checking
+    import autoinject
 
 
-class ContextInformant(ABC):
+class SituationInformant(ABC):
     """ Base class for context informants
 
         :param name: A unique name for this informant. It will be used to assemble multiple contexts together.
         :type name: str
     """
 
-    def __init__(self, name: str = None):
+    def __init__(self, name: t.Optional[str] = None):
         """ Constructor """
         if name is None:
             name = str(self.__class__)  # pragma: no cover
         self.name = name
-        self.context_manager = None
+        self._cache_manager: t.Optional["autoinject.cache_manager.CacheManager"] = None
 
-    def set_context_manager(self, context_manager):
+    def set_cache_manager(self, cache_manager: "autoinject.cache_manager.CacheManager"):
         """ Set the context manager. This is called by the ``ContextManager`` when the informant is registered.
 
-        :param context_manager: The context manager
-        :type context_manager: autoinject.context_manager.ContextManager
+        :param cache_manager: The context manager
+        :type cache_manager: autoinject.cache_manager.CacheManager
         """
-        self.context_manager = context_manager
+        self._cache_manager = cache_manager
+
+    @property
+    def cache_manager(self) -> "autoinject.cache_manager.CacheManager":
+        if self._cache_manager is None:
+            raise Exception("Cache manager hasn't been set.")
+        return self._cache_manager
 
     @abstractmethod
-    def get_context_id(self) -> str:
+    def get_cache_id(self) -> str:
         """ Obtains a unique identifier for the current context. This is paired with the informant name to create a
             unique string for each context.
 
@@ -45,20 +56,20 @@ class ContextInformant(ABC):
         """
         pass  # pragma: no cover
 
-    def destroy(self, context_id: str):
+    def destroy(self, cache_id: str):
         """ Remove all objects cached under the given context.
 
-        :param context_id: A value that would have been provided by get_context_id() to the ``ContextManager``
-        :type context_id: str
+        :param cache_id: A value that would have been provided by get_context_id() to the ``ContextManager``
+        :type cache_id: str
         """
-        self.context_manager.destroy_context(self, context_id)
+        self.cache_manager.destroy_cache_id(self, cache_id)
 
-    def check_expired_contexts(self):
+    def check_expired_caches(self):
         """ Trigger to check for expired contexts so they can be cleaned-up from memory """
         pass
 
 
-class NamedContextInformant(ContextInformant):
+class NamedSituationInformant(SituationInformant):
     """ A toy class for demonstrating how contexts work. The context can be changed using ``switch_context()``::
 
             from autoinject import injector, NamedContextInformant
@@ -75,25 +86,25 @@ class NamedContextInformant(ContextInformant):
 
     """
 
-    def __init__(self, name="named_context"):
+    def __init__(self, name: str = "named_situation"):
         """ Constructor """
         super().__init__(name)
-        self.current_context = "_default"
+        self.cache_id = "_default"
 
-    def switch_context(self, context_name: str):
+    def switch_context(self, cache_id: str):
         """Change the context ID"""
-        self.current_context = context_name
+        self.cache_id = cache_id
 
     def destroy_self(self):
         """Destroy the current context"""
-        self.destroy(self.current_context)
+        self.destroy(self.cache_id)
 
-    def get_context_id(self):
+    def get_cache_id(self) -> str:
         """ Provide the context ID to the ContextManager """
-        return self.current_context
+        return self.cache_id
 
 
-_autoinject_var = contextvars.ContextVar("_autoinject_context_name", default=None)
+_autoinject_var = contextvars.ContextVar[t.Optional[str]]("_autoinject_context_name", default=None)
 
 
 class ContextVarManager:
@@ -104,25 +115,26 @@ class ContextVarManager:
     SAME = "same"
     DEFAULT = "_default"
 
-    def __init__(self, contextvar_informant, context="_default", suppress_exit_warning: bool = False):
-        self._context = context
+    def __init__(self, contextvar_informant: "ContextVarInformant", context: ait.ContextMode = "_default", suppress_exit_warning: bool = False):
+        self._context: t.Optional[ait.SupportsContext] = None
         self._delegate_run = True
         self._suppress_exit_warning = suppress_exit_warning
-        if self._context == ContextVarManager.EMPTY:
+        if context is ContextVarManager.EMPTY:
             self._context = contextvars.Context()
-        elif self._context in (ContextVarManager.COPY, ContextVarManager.DEFAULT) or self._context is None:
-            self._context = None
+        elif context is ContextVarManager.COPY or context is ContextVarManager.DEFAULT or context is None:
             self._context = self.copy(True)
-        elif self._context == ContextVarManager.SAME:
+        elif context is ContextVarManager.SAME:
             self._context = None
-        elif isinstance(self._context, str):
+        elif isinstance(context, str):
             raise ValueError(f"Incorrect custom setting for context {context}")
-        # Handle nested contexts more graciously
-        elif isinstance(self._context, self.__class__):
-            self._context = self._context._context
-        if self._context is not None:
-            assert isinstance(self._context, contextvars.Context)
-        self._reset_token = None
+        elif isinstance(context, ContextVarManager):
+            # Handle nested contexts more graciously
+            self._context = context._context
+        elif isinstance(context, ait.ContextProtocol):
+            self._context = context
+        else:
+            raise TypeError('Invalid type for context argument')
+        self._reset_token: t.Any = None
         self._informant = contextvar_informant
         self._test = None
 
@@ -138,9 +150,9 @@ class ContextVarManager:
         self._informant.destroy_self(self._context)
         try:
             ContextVarManager.restore_context_id(self._reset_token, self)
-        except ValueError as ex:
+        except ValueError:  # pragma: no coverage (hard to test)
             if not self._suppress_exit_warning:
-                logging.getLogger("autoinject").warning(f"Failure to clear context ID (likely inner block left context in an unclear state)")
+                logging.getLogger("autoinject").exception(f"Failure to clear context ID (likely inner block left context in an unclear state)")
         self._reset_token = None
 
     def __contains__(self, item):
@@ -149,10 +161,10 @@ class ContextVarManager:
     def __getitem__(self, item):
         return self.get(item)
 
-    def __iter__(self):
+    def __iter__(self): # pragma: no coverage
         return self._map_to_context("__iter__")
 
-    def __len__(self):
+    def __len__(self): # pragma: no coverage
         return self._map_to_context("__len__")
 
     def iter(self):
@@ -170,34 +182,35 @@ class ContextVarManager:
     def items(self):
         return self._map_to_context("items")
 
-    def _map_to_context(self, item, *args, **kwargs):
+    def _map_to_context(self, item: str, *args, **kwargs):
         _inner_context = self._context
         if self._context is None:
             _inner_context = contextvars.copy_context()
         return getattr(_inner_context, item)(*args, **kwargs)
 
-    def get(self, var, default=None):
+    def get(self, var: contextvars.ContextVar, default: t.Any = None):
         return self.run(var.get, default)
 
-    def set(self, var, value):
+    def set(self, var: contextvars.ContextVar, value: t.Any):
         """Set a variable and return a token"""
         return self.run(var.set, value)
 
-    def reset(self, var, token):
+    def reset(self, var: contextvars.ContextVar, token: t.Any):
         """Reset a variable."""
         return self.run(var.reset, token)
 
-    def run(self, fn, *args, **kwargs):
+    Q = t.TypeVar("Q")
+    def run(self, cmd: t.Callable[..., Q], *args, **kwargs) -> Q:
         """Run, in context if appropriate."""
         if self._delegate_run and self._context is not None:
             # Prevent running the context from within the context
             self._delegate_run = False
             try:
-                return self._context.run(fn, *args, **kwargs)
+                return self._context.run(cmd, *args, **kwargs)
             finally:
                 self._delegate_run = True
         else:
-            return fn(*args, **kwargs)
+            return cmd(*args, **kwargs)
 
     def copy(self, same_autoinject_context: bool = False):
         """Make a copy of the context, with optional parameter to keep or reset the autoinjection variables."""
@@ -208,7 +221,7 @@ class ContextVarManager:
         return new_context
 
     @staticmethod
-    def freshen_context(context=None):
+    def freshen_context(context: t.Optional[ait.SupportsContext] = None) -> contextvars.Token:
         """Refresh the context by resetting the context ID."""
         if context is not None:
             return context.run(ContextVarManager.freshen_context)
@@ -217,7 +230,7 @@ class ContextVarManager:
             return _autoinject_var.set(secrets.token_hex(16))
 
     @staticmethod
-    def restore_context_id(token, context=None):
+    def restore_context_id(token, context: t.Optional[ait.SupportsContext] = None):
         """Refresh the context by resetting the context ID."""
         if context is not None:
             context.run(ContextVarManager.restore_context_id, token)
@@ -226,7 +239,7 @@ class ContextVarManager:
             _autoinject_var.reset(token)
 
     @staticmethod
-    def ensure_context_id(context=None):
+    def ensure_context_id(context: t.Optional[ait.SupportsContext] = None):
         """Ensure there is a context ID."""
         if context is not None:
             return context.run(ContextVarManager.ensure_context_id)
@@ -239,7 +252,7 @@ class ContextVarManager:
             return context_id
 
     @staticmethod
-    def get_context_id(context=None):
+    def get_context_id(context: t.Optional[ait.SupportsContext] = None) -> t.Optional[str]:
         """Retrieve the current context ID, but don't set one if there isn't one."""
         if context is not None:
             return context.run(ContextVarManager.get_context_id)
@@ -248,38 +261,38 @@ class ContextVarManager:
             return _autoinject_var.get()
 
 
-class ContextVarInformant(ContextInformant):
+class ContextVarInformant(SituationInformant):
     """Context informant for contextvars library."""
 
     def __init__(self):
         """Init method."""
         super().__init__("contextvars")
 
-    def get_context_id(self) -> str:
+    def get_cache_id(self) -> str:
         """Obtain the current context ID from the contextvars."""
         return ContextVarManager.ensure_context_id()
 
-    def destroy_self(self, context: contextvars.Context = None):
+    def destroy_self(self, context: t.Optional[ait.SupportsContext] = None):
         """Destroy the context related to the contextvars context passed or the current one if None."""
         context_id = ContextVarManager.get_context_id(context)
         if context_id is not None:
             self.destroy(context_id)
 
 
-class ThreadedContextInformant(ContextInformant):
+class ThreadedContextInformant(SituationInformant):
     """ Context informant for threading library """
 
     def __init__(self):
         """ Constructor """
         super().__init__("threading")
         self._active_threads = set()
-        self.lock = threading.Lock()
+        self._lock = threading.Lock()
 
-    def check_expired_contexts(self):
+    def check_expired_caches(self):
         """ Since threads don't reliably have a callback when they complete, we instead regularly monitor the active
             thread list and remove them as they complete to cut down on memory usage.
         """
-        with self.lock:
+        with self._lock:
             if self._active_threads:
                 active_idents = [t.ident for t in threading.enumerate() if t.ident]
                 remove_list = set()
@@ -290,15 +303,15 @@ class ThreadedContextInformant(ContextInformant):
                 for item in remove_list:
                     self._active_threads.remove(item)
 
-    def destroy_self(self, thread: threading.Thread = None):
+    def destroy_self(self, thread: t.Optional[threading.Thread] = None):
         """Destroy the current thread context."""
         if thread:
             if thread.ident:
                 self.destroy(str(thread.ident))
         else:
-            self.destroy(self.get_context_id())
+            self.destroy(self.get_cache_id())
 
-    def get_context_id(self):
+    def get_cache_id(self):
         """ Provide the context ID to the ContextManager """
         ident = threading.get_ident()
         self._active_threads.add(ident)

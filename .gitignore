@@ -3,6 +3,7 @@
 /src/*.egg-info/
 /.git
 /.idea/
+/htmlcov/*
 scratch.py
 /docs/build
 /docs/make.bat

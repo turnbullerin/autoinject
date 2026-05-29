@@ -1,3 +1,4 @@
+import typing as t
 import contextvars
 import unittest
 import autoinject
@@ -7,14 +8,14 @@ class ForNameTest:
     pass
 
 
-test_var = contextvars.ContextVar("_test_world", default=None)
+test_var = contextvars.ContextVar[t.Optional[str]]("_test_world", default=None)
 
 
 class TestContextManager(unittest.TestCase):
 
     def setUp(self):
         self.registry = autoinject.ClassRegistry()
-        self.ctx = autoinject.ContextManager(self.registry)
+        self.ctx = autoinject.CacheManager(self.registry)
 
     def test_context_switch(self):
         pass
@@ -38,7 +39,7 @@ class TestContextManager(unittest.TestCase):
 
         def from_context():
             obj1 = get_obj()
-            self.assertTrue(len(self.ctx._context_cache) == 1)
+            self.assertTrue(len(self.ctx.context_cache) == 1)
             self.assertIsNone(test_var.get())
             test_var.set("foo2")
             with autoinject.informants.ContextVarManager(self.ctx.contextvar_info, "copy") as ctx:
@@ -57,9 +58,9 @@ class TestContextManager(unittest.TestCase):
                 self.assertEqual(ctx.run(test_var.get), "bar")
                 obj3 = ctx.run(get_obj)
                 self.assertEqual(hash(obj2), hash(obj3))
-                self.assertEqual(len(self.ctx._context_cache), 2)
+                self.assertEqual(len(self.ctx.context_cache), 2)
             self.assertEqual(test_var.get(), "bar2")
-            self.assertEqual(len(self.ctx._context_cache), 1)
+            self.assertEqual(len(self.ctx.context_cache), 1)
             obj4 = get_obj()
             self.assertEqual(hash(obj1), hash(obj4))
             test_var.set("roo")
@@ -79,7 +80,7 @@ class TestContextManager(unittest.TestCase):
 
         def from_context():
             obj1 = get_obj()
-            self.assertTrue(len(self.ctx._context_cache) == 1)
+            self.assertTrue(len(self.ctx.context_cache) == 1)
             self.assertIsNone(test_var.get())
             test_var.set("foo2")
             with autoinject.informants.ContextVarManager(self.ctx.contextvar_info, "same") as ctx:
@@ -98,9 +99,9 @@ class TestContextManager(unittest.TestCase):
                 self.assertEqual(ctx.run(test_var.get), "bar2")
                 obj3 = ctx.run(get_obj)
                 self.assertEqual(hash(obj2), hash(obj3))
-                self.assertEqual(len(self.ctx._context_cache), 2)
+                self.assertEqual(len(self.ctx.context_cache), 2)
             self.assertEqual(test_var.get(), "bar2")
-            self.assertEqual(len(self.ctx._context_cache), 1)
+            self.assertEqual(len(self.ctx.context_cache), 1)
             obj4 = get_obj()
             self.assertEqual(hash(obj1), hash(obj4))
             test_var.set("roo")
@@ -150,7 +151,7 @@ class TestContextManager(unittest.TestCase):
 
         def from_context():
             obj1 = get_obj()
-            self.assertTrue(len(self.ctx._context_cache) == 1)
+            self.assertTrue(len(self.ctx.context_cache) == 1)
             self.assertIsNone(test_var.get())
             test_var.set("foo2")
             with autoinject.informants.ContextVarManager(self.ctx.contextvar_info, "empty") as ctx:
@@ -171,9 +172,9 @@ class TestContextManager(unittest.TestCase):
                 self.assertEqual(ctx.run(test_var.get), "bar")
                 obj3 = ctx.run(get_obj)
                 self.assertEqual(hash(obj2), hash(obj3))
-                self.assertEqual(len(self.ctx._context_cache), 2)
+                self.assertEqual(len(self.ctx.context_cache), 2)
             self.assertEqual(test_var.get(), "bar2")
-            self.assertEqual(len(self.ctx._context_cache), 1)
+            self.assertEqual(len(self.ctx.context_cache), 1)
             obj4 = get_obj()
             self.assertEqual(hash(obj1), hash(obj4))
             test_var.set("roo")
@@ -269,7 +270,7 @@ class TestContextManager(unittest.TestCase):
             def __cleanup__(self):
                 self.closed = True
         self.registry.register(TestClass, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
-        nci = autoinject.NamedContextInformant()
+        nci = autoinject.NamedSituationInformant()
         self.ctx.register_informant(nci)
         nci.switch_context("alpha")
         alpha_obj = self.ctx.get_object(TestClass)
@@ -301,7 +302,7 @@ class TestContextManager(unittest.TestCase):
         class TestClass:
             pass
         self.registry.register(TestClass, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
-        nci = autoinject.NamedContextInformant()
+        nci = autoinject.NamedSituationInformant()
         self.ctx.register_informant(nci)
         nci.switch_context("alpha")
         def_obj1 = self.ctx.get_object(TestClass)
@@ -325,15 +326,28 @@ class TestContextManager(unittest.TestCase):
 
     def test_context_obj_by_str(self):
         self.registry.register(ForNameTest, caching_strategy=autoinject.CacheStrategy.CONTEXT_CACHE)
-        nci = autoinject.NamedContextInformant()
+        nci = autoinject.NamedSituationInformant()
         self.ctx.register_informant(nci)
         nci.switch_context("alpha")
-        def_obj1 = self.ctx.get_object("tests.test_context_manager.ForNameTest")
+        def_obj1 = self.ctx.get_object(ForNameTest)
         self.assertIsInstance(def_obj1, ForNameTest)
         def_obj2 = self.ctx.get_object(ForNameTest)
         self.assertIsInstance(def_obj2, ForNameTest)
         self.assertEqual(hash(def_obj1), hash(def_obj2))
 
+    def test_clear_global_cache(self):
+        self.registry.register(ForNameTest, caching_strategy=autoinject.CacheStrategy.GLOBAL_CACHE)
+        x = self.ctx.get_object(ForNameTest)
+        self.ctx.clear_cache(ForNameTest)
+        y = self.ctx.get_object(ForNameTest)
+        self.assertIsNot(x, y)
+
+    def test_gc_run(self):
+        self.ctx.garbage_collection_frequency = 2
+        self.registry.register(ForNameTest, caching_strategy=autoinject.CacheStrategy.GLOBAL_CACHE)
+        self.assertIsNone(self.ctx._last_gc)
+        _ = self.ctx.get_object(ForNameTest)
+        self.assertIsNotNone(self.ctx._last_gc)
 
 
 

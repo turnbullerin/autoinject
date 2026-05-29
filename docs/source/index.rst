@@ -12,7 +12,10 @@ Contents
 .. toctree::
    :maxdepth: 2
 
-   overview
+   basics
+   injectables
+   injections
+   testing
    code
 
 Indices and tables
